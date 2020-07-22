@@ -549,6 +549,10 @@ class WebsocketConnection(Connection):
                     self.loop.create_task(self.ws.close())
             self.loop.call_soon_threadsafe(_do_disconnect)
 
+    def __connection_error(self, e):
+        log.error('%s: Could not connect to server: %s' % (self.__class__.__qualname__, e))
+        return False
+
     async def main(self, loop, on_connected=None):
         if self.ws is not None:
             raise Exception('Cannot run connection twice!')
@@ -556,19 +560,20 @@ class WebsocketConnection(Connection):
         self.loop = loop
 
         try:
-            async with websockets.connect(self.url) as ws:
-                if on_connected: await on_connected()
-                self.ws = ws
-                self._on_connected()
-                try:
-                    while True:
-                        chunk = await ws.recv()
-                        self._on_event(protocol.Decoder(chunk).next())
-                except websockets.exceptions.ConnectionClosed:
-                    pass
+            self.ws = await websockets.connect(self.url)
         except OSError as e:
-            log.error('%s: Could not connect to server: %s' % (self.__class__.__qualname__, e))
-            return False
+            return self.__connection_error(e)
+        except websockets.exceptions.InvalidHandshake as e:
+            return self.__connection_error(e)
+
+        try:
+            if on_connected: await on_connected()
+            self._on_connected()
+            while True:
+                chunk = await self.ws.recv()
+                self._on_event(protocol.Decoder(chunk).next())
+        except websockets.exceptions.WebSocketException:
+            pass
         finally:
             self._on_disconnected()
 
