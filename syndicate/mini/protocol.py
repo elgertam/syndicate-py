@@ -28,18 +28,5 @@ Observe = Record.makeConstructor('observe', 'specification')
 Capture = Record.makeConstructor('capture', 'specification')
 Discard = Record.makeConstructor('discard', '')
 
-_decode_placeholders = {
-    0: Discard.constructorInfo.key,
-    1: Capture.constructorInfo.key,
-    2: Observe.constructorInfo.key,
-}
-
-_encode_placeholders = dict(((v, k) for (k, v) in _decode_placeholders.items()))
-
-class Decoder(preserves.Decoder):
-    def __init__(self, *args, **kwargs):
-        super(Decoder, self).__init__(*args, placeholders=_decode_placeholders, **kwargs)
-
-class Encoder(preserves.Encoder):
-    def __init__(self, *args, **kwargs):
-        super(Encoder, self).__init__(*args, placeholders=_encode_placeholders, **kwargs)
+Decoder = preserves.Decoder
+Encoder = preserves.Encoder
