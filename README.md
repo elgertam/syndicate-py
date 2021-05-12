@@ -22,6 +22,6 @@ Start a Syndicate broker (such as
 
 Then, run
 
-    python chat.py tcp://localhost:8001#chat
+    python [chat.py](chat.py) tcp://localhost:8001#chat
 
 several times in separate windows.
