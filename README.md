@@ -20,8 +20,6 @@ or
 Start a Syndicate broker (such as
 [this one](https://git.syndicate-lang.org/syndicate-rs)) in one window.
 
-Then, run
+Then, run [chat.py](chat.py) several times in several separate windows:
 
-    python [chat.py](chat.py) tcp://localhost:8001#chat
-
-several times in separate windows.
+    python chat.py tcp://localhost:8001#chat
