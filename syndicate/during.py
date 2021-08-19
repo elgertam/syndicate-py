@@ -27,12 +27,13 @@ class During(actor.Entity):
     def on_publish(self, turn, v, handle):
         retract_handler = self._on_add(turn, *self._wrap(v))
         if retract_handler is not None:
-            self.retract_handlers[handle] = retract_handler
+            if isinstance(retract_handler, actor.Facet):
+                self.retract_handlers[handle] = lambda turn: turn.stop(retract_handler)
+            else:
+                self.retract_handlers[handle] = retract_handler
 
     def on_retract(self, turn, handle):
-        if handle in self.retract_handlers:
-            self.retract_handlers[handle](turn)
-            del self.retract_handlers[handle]
+        self.retract_handlers.pop(handle, lambda turn: ())(turn)
 
     def on_message(self, turn, v):
         self._on_msg(turn, *self._wrap(v))
