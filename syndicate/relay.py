@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import websockets
 import logging
@@ -429,3 +430,18 @@ class WebsocketTunnelRelay(TunnelRelay):
         self.loop = None
         self.ws = None
         return True
+
+@transport.address(transportAddress.Stdio)
+class PipeTunnelRelay(_StreamTunnelRelay):
+    def __init__(self, turn, address, input_fileobj = sys.stdin, output_fileobj = sys.stdout, **kwargs):
+        super().__init__(turn, address, **kwargs)
+        self.input_fileobj = input_fileobj
+        self.output_fileobj = output_fileobj
+        self.reader = asyncio.StreamReader()
+
+    async def _create_connection(self, loop):
+        return await loop.connect_read_pipe(lambda: self, self.input_fileobj)
+
+    def _send_bytes(self, bs):
+        self.output_fileobj.buffer.write(bs)
+        self.output_fileobj.buffer.flush()
