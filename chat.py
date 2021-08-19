@@ -56,19 +56,8 @@ def main(turn):
             return turn.facet(lambda turn: main_facet(turn, root_facet, ds.embeddedValue))
         turn.publish(gk.embeddedValue, gatekeeper.Resolve(cap, turn.ref(handle_ds)))
 
-    async def on_connected(tr):
-        print('-'*50, 'Connected')
-    async def on_disconnected(tr, did_connect):
-        if did_connect:
-            print('-'*50, 'Disconnected')
-        else:
-            await asyncio.sleep(2)
-        return True
-
     conn = syndicate.relay.TunnelRelay.from_str(turn,
                                                 conn_str,
-                                                gatekeeper_peer = turn.ref(handle_gatekeeper),
-                                                on_connected = on_connected,
-                                                on_disconnected = on_disconnected)
+                                                gatekeeper_peer = turn.ref(handle_gatekeeper))
 
 actor.start_actor_system(main, name = 'chat', debug = False)
