@@ -42,15 +42,10 @@ def main_facet(turn, root_facet, ds):
 
     async def accept_input():
         reader = asyncio.StreamReader()
-        await actor.find_loop().connect_read_pipe(
-            lambda: asyncio.StreamReaderProtocol(reader),
-            sys.stdin)
-        while True:
-            line = (await reader.readline()).decode('utf-8')
-            if not line:
-                actor.Turn.external(f, lambda turn: turn.stop(root_facet))
-                break
+        await actor.find_loop().connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+        while line := (await reader.readline()).decode('utf-8'):
             actor.Turn.external(f, lambda turn: turn.send(ds, Says(me, line.strip())))
+        actor.Turn.external(f, lambda turn: turn.stop(root_facet))
     turn.linked_task(accept_input())
 
 def main(turn):
