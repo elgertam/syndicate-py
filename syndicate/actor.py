@@ -110,6 +110,7 @@ class Facet:
         self.children = set()
         self.outbound = initial_assertions
         self.shutdown_actions = []
+        self.linked_tasks = []
         self.alive = True
         self.inert_check_preventers = 0
 
@@ -137,7 +138,11 @@ class Facet:
         remove_noerror(self.shutdown_actions, a)
 
     def isinert(self):
-        return len(self.children) == 0 and len(self.outbound) == 0 and self.inert_check_preventers == 0
+        return \
+            len(self.children) == 0 and \
+            len(self.outbound) == 0 and \
+            len(self.linked_tasks) == 0 and \
+            self.inert_check_preventers == 0
 
     def prevent_inert_check(self):
         armed = True
@@ -148,6 +153,26 @@ class Facet:
             armed = False
             self.inert_check_preventers = self.inert_check_preventers - 1
         return disarm
+
+    def linked_task(self, coro, loop = None):
+        task = None
+        def cancel_linked_task(turn):
+            nonlocal task
+            if task is not None:
+                remove_noerror(self.linked_tasks, task)
+                task.cancel()
+                task = None
+                self.cancel_on_stop(cancel_linked_task)
+                self.actor.cancel_at_exit(cancel_linked_task)
+        async def guarded_task():
+            try:
+                await coro
+            finally:
+                Turn.external(self, cancel_linked_task)
+        task = find_loop(loop).create_task(guarded_task())
+        self.linked_tasks.append(task)
+        self.on_stop(cancel_linked_task)
+        self.actor.at_exit(cancel_linked_task)
 
     def _terminate(self, turn, orderly):
         if not self.alive: return
@@ -253,25 +278,7 @@ class Turn:
 
     # decorator
     def linked_task(self, loop = None):
-        return lambda thunk: self._linked_task(thunk(), loop = loop)
-
-    def _linked_task(self, coro, loop = None):
-        task = None
-        def cancel_linked_task(turn):
-            nonlocal task
-            if task is not None:
-                task.cancel()
-                task = None
-                self._facet.cancel_on_stop(cancel_linked_task)
-                self._facet.actor.cancel_at_exit(cancel_linked_task)
-        async def guarded_task():
-            try:
-                await coro
-            finally:
-                Turn.external(self._facet, cancel_linked_task)
-        task = find_loop(loop).create_task(guarded_task())
-        self._facet.on_stop(cancel_linked_task)
-        self._facet.actor.at_exit(cancel_linked_task)
+        return lambda thunk: self._facet.linked_task(thunk(), loop = loop)
 
     def stop(self, facet = None, continuation = None):
         if facet is None:

@@ -1,5 +1,4 @@
 from . import actor
-from . import dataspace
 
 def _ignore(*args, **kwargs):
     pass
@@ -60,7 +59,3 @@ class During(actor.Entity):
     def sync_handler(self, on_sync):
         self._on_sync = on_sync
         return self
-
-    # decorator
-    def observe(self, turn, ds, pattern):
-        return lambda on_add: dataspace.observe(turn, ds, pattern)(self.add_handler(on_add))

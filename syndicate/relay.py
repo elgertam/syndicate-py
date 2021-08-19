@@ -6,7 +6,7 @@ from preserves import Embedded, stringify
 from preserves.fold import map_embeddeds
 
 from . import actor, encode, transport, Decoder
-from .actor import _inert_ref, Turn, adjust_engine_inhabitant_count
+from .actor import _inert_ref, Turn
 from .idgen import IdGenerator
 from .schema import externalProtocol as protocol, sturdy, transportAddress
 
@@ -64,16 +64,15 @@ class TunnelRelay:
                  on_connected = None,
                  on_disconnected = None,
                  ):
-        self.ref = turn.ref(self)
         self.facet = turn._facet
         self.facet.on_stop(self._shutdown)
         self.address = address
         self.gatekeeper_peer = gatekeeper_peer
         self.gatekeeper_oid = gatekeeper_oid
         self._reset()
-        actor.queue_task(lambda: self._reconnecting_main(asyncio.get_running_loop(),
-                                                         on_connected = on_connected,
-                                                         on_disconnected = on_disconnected))
+        self.facet.linked_task(self._reconnecting_main(asyncio.get_running_loop(),
+                                                       on_connected = on_connected,
+                                                       on_disconnected = on_disconnected))
 
     def _reset(self):
         self.inbound_assertions = {} # map remote handle to InboundAssertion
@@ -232,12 +231,10 @@ class TunnelRelay:
         raise Exception('subclassresponsibility')
 
     async def _reconnecting_main(self, loop, on_connected=None, on_disconnected=None):
-        adjust_engine_inhabitant_count(1)
         should_run = True
         while should_run and self.facet.alive:
             did_connect = await self.main(loop, on_connected=(on_connected or _default_on_connected))
             should_run = await (on_disconnected or _default_on_disconnected)(self, did_connect)
-        adjust_engine_inhabitant_count(-1)
 
     @staticmethod
     def from_str(turn, s, **kwargs):

@@ -29,13 +29,12 @@ def main_facet(turn, root_facet, ds):
     f = turn._facet
     turn.publish(ds, Present(me))
 
-    @During().observe(turn, ds, P.rec('Present', P.CAPTURE))
+    @dataspace.during(turn, ds, P.rec('Present', P.CAPTURE))
     def on_presence(turn, who):
         print('%s joined' % (who,))
         return lambda turn: print('%s left' % (who,))
 
-    @dataspace.observe(turn, ds, P.rec('Says', P.CAPTURE, P.CAPTURE))
-    @During().msg_handler
+    @dataspace.on_message(turn, ds, P.rec('Says', P.CAPTURE, P.CAPTURE))
     def on_says(turn, who, what):
         print('%s says %r' % (who, what))
 
@@ -57,9 +56,7 @@ def main(turn):
             return turn.facet(lambda turn: main_facet(turn, root_facet, ds.embeddedValue))
         turn.publish(gk.embeddedValue, gatekeeper.Resolve(cap, turn.ref(handle_ds)))
 
-    disarm = turn.prevent_inert_check()
     async def on_connected(tr):
-        disarm()
         print('-'*50, 'Connected')
     async def on_disconnected(tr, did_connect):
         if did_connect:
