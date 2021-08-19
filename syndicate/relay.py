@@ -333,8 +333,12 @@ class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
 
     def _disconnect(self):
         if self.stop_signal:
-            self.stop_signal.get_loop().call_soon_threadsafe(
-                lambda: self.stop_signal.set_result(True))
+            def set_stop_signal():
+                try:
+                    self.stop_signal.set_result(True)
+                except:
+                    pass
+            self.stop_signal.get_loop().call_soon_threadsafe(set_stop_signal)
 
     async def _create_connection(self, loop):
         raise Exception('subclassresponsibility')
