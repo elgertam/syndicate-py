@@ -51,10 +51,14 @@ def main_facet(turn, root_facet, ds):
 
 def main(turn):
     root_facet = turn._facet
-    gk_receiver = During(turn, on_add = lambda turn, gk: turn.publish(
-        gk.embeddedValue, gatekeeper.Resolve(cap, ds_receiver))).ref
-    ds_receiver = During(turn, on_add = lambda turn, ds: turn.facet(
-        lambda turn: main_facet(turn, root_facet, ds.embeddedValue))).ref
+
+    def handle_gatekeeper(turn, gk):
+        turn.publish(gk.embeddedValue, gatekeeper.Resolve(cap, ds_receiver))
+    gk_receiver = During(turn, on_add = handle_gatekeeper).ref
+
+    def handle_ds(turn, ds):
+        return turn.facet(lambda turn: main_facet(turn, root_facet, ds.embeddedValue))
+    ds_receiver = During(turn, on_add = handle_ds).ref
 
     disarm = turn.prevent_inert_check()
     async def on_connected(tr):

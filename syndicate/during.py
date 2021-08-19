@@ -29,8 +29,13 @@ class During(actor.Entity):
         if retract_handler is not None:
             if isinstance(retract_handler, actor.Facet):
                 self.retract_handlers[handle] = lambda turn: turn.stop(retract_handler)
-            else:
+            elif callable(retract_handler):
                 self.retract_handlers[handle] = retract_handler
+            else:
+                raise ValueError('Non-callable retract_handler', {
+                    'retract_handler': retract_handler,
+                    'on_add': self._on_add,
+                })
 
     def on_retract(self, turn, handle):
         self.retract_handlers.pop(handle, lambda turn: ())(turn)
