@@ -4,8 +4,8 @@ except ImportError:
     from distutils.core import setup
 
 setup(
-    name="mini-syndicate",
-    version="0.0.7",
+    name="syndicate-py",
+    version="0.1.0",
     author="Tony Garnock-Jones",
     author_email="tonyg@leastfixedpoint.com",
     license="GNU General Public License v3 or later (GPLv3+)",
@@ -16,9 +16,9 @@ setup(
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
         "Programming Language :: Python :: 3",
     ],
-    packages=["syndicate", "syndicate.mini"],
-    url="https://github.com/syndicate-lang/mini-syndicate-py",
-    description="Syndicate-like library for integrating Python with the Syndicate ecosystem",
+    packages=["syndicate"],
+    url="https://git.syndicate-lang.org/syndicate-lang/syndicate-py",
+    description="Syndicated Actor model and Syndicate network protocol for Python 3",
     install_requires=['websockets', 'preserves'],
     python_requires=">=3.6, <4",
 )
