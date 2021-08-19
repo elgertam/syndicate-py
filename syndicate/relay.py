@@ -5,7 +5,8 @@ import logging
 from preserves import Embedded, stringify
 from preserves.fold import map_embeddeds
 
-from . import actor, encode, transport, Decoder
+from . import actor, encode, transport, Decoder, gatekeeper
+from .during import During
 from .actor import _inert_ref, Turn
 from .idgen import IdGenerator
 from .schema import externalProtocol as protocol, sturdy, transportAddress
@@ -70,9 +71,10 @@ class TunnelRelay:
         self.gatekeeper_peer = gatekeeper_peer
         self.gatekeeper_oid = gatekeeper_oid
         self._reset()
-        self.facet.linked_task(self._reconnecting_main(asyncio.get_running_loop(),
-                                                       on_connected = on_connected,
-                                                       on_disconnected = on_disconnected))
+        self.facet.linked_task(
+            lambda facet: self._reconnecting_main(asyncio.get_running_loop(),
+                                                  on_connected = on_connected,
+                                                  on_disconnected = on_disconnected))
 
     def _reset(self):
         self.inbound_assertions = {} # map remote handle to InboundAssertion
@@ -237,8 +239,21 @@ class TunnelRelay:
             should_run = await (on_disconnected or _default_on_disconnected)(self, did_connect)
 
     @staticmethod
-    def from_str(turn, s, **kwargs):
-        return transport.connection_from_str(turn, s, **kwargs)
+    def from_str(turn, conn_str, **kwargs):
+        return transport.connection_from_str(turn, conn_str, **kwargs)
+
+# decorator
+def connect(turn, conn_str, cap, **kwargs):
+    def prepare_resolution_handler(handler):
+        @During().add_handler
+        def handle_gatekeeper(turn, gk):
+            gatekeeper.resolve(turn, gk.embeddedValue, cap)(handler)
+        return transport.connection_from_str(
+            turn,
+            conn_str,
+            gatekeeper_peer = turn.ref(handle_gatekeeper),
+            **kwargs)
+    return prepare_resolution_handler
 
 class RelayEntity(actor.Entity):
     def __init__(self, relay, oid):

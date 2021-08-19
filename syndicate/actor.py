@@ -101,14 +101,14 @@ class Actor:
         queue_task(finish_termination)
 
 class Facet:
-    def __init__(self, actor, parent, initial_assertions = {}):
+    def __init__(self, actor, parent, initial_assertions = None):
         self.id = next(_next_facet_id)
         self.actor = actor
         self.parent = parent
         if parent:
             parent.children.add(self)
         self.children = set()
-        self.outbound = initial_assertions
+        self.outbound = initial_assertions or {}
         self.shutdown_actions = []
         self.linked_tasks = []
         self.alive = True
@@ -154,7 +154,7 @@ class Facet:
             self.inert_check_preventers = self.inert_check_preventers - 1
         return disarm
 
-    def linked_task(self, coro, loop = None):
+    def linked_task(self, coro_fn, loop = None):
         task = None
         def cancel_linked_task(turn):
             nonlocal task
@@ -166,7 +166,7 @@ class Facet:
                 self.actor.cancel_at_exit(cancel_linked_task)
         async def guarded_task():
             try:
-                await coro
+                await coro_fn(self)
             finally:
                 Turn.external(self, cancel_linked_task)
         task = find_loop(loop).create_task(guarded_task())
@@ -267,6 +267,7 @@ class Turn:
     def ref(self, entity):
         return Ref(self._facet, entity)
 
+    # this actually can work as a decorator as well as a normal method!
     def facet(self, boot_proc):
         new_facet = Facet(self._facet.actor, self._facet)
         with ActiveFacet(self, new_facet):
@@ -278,7 +279,7 @@ class Turn:
 
     # decorator
     def linked_task(self, loop = None):
-        return lambda thunk: self._facet.linked_task(thunk(), loop = loop)
+        return lambda coro_fn: self._facet.linked_task(coro_fn, loop = loop)
 
     def stop(self, facet = None, continuation = None):
         if facet is None:
@@ -288,6 +289,10 @@ class Turn:
             if continuation is not None:
                 continuation(turn)
         self._enqueue(facet.parent, action)
+
+    # can also be used as a decorator
+    def on_stop(self, a):
+        self._facet.on_stop(a)
 
     def spawn(self, boot_proc, name = None, initial_assertions = None, daemon = False):
         def action(turn):
@@ -403,6 +408,10 @@ class OutboundAssertion:
         self.handle = handle
         self.ref = ref
         self.established = False
+
+    def __repr__(self):
+        return '<OutboundAssertion handle=%s ref=%r%s>' % \
+            (self.handle, self.ref, ' established' if self.established else '')
 
 # Can act as a mixin
 class Entity:

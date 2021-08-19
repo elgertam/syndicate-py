@@ -9,9 +9,9 @@ def observe(turn, ds, pattern):
     return publish_observer
 
 # decorator
-def on_message(turn, ds, pattern):
-    return lambda on_msg: observe(turn, ds, pattern)(During().msg_handler(on_msg))
+def on_message(turn, ds, pattern, *args, **kwargs):
+    return lambda on_msg: observe(turn, ds, pattern)(During(*args, **kwargs).msg_handler(on_msg))
 
 # decorator
-def during(turn, ds, pattern):
-    return lambda on_add: observe(turn, ds, pattern)(During().add_handler(on_add))
+def during(turn, ds, pattern, *args, **kwargs):
+    return lambda on_add: observe(turn, ds, pattern)(During(*args, **kwargs).add_handler(on_add))
