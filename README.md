@@ -24,5 +24,5 @@ Find the line of broker output giving the root capability:
 Then, run [chat.py](chat.py) several times in several separate windows:
 
     python chat.py \
-        '<tcp "localhost" 8001>' \
-        '<ref "syndicate" [] #x"a6480df5306611ddd0d3882b546e1977">'
+        --address '<tcp "localhost" 8001>' \
+        --cap '<ref "syndicate" [] #x"a6480df5306611ddd0d3882b546e1977">'

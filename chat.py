@@ -1,22 +1,29 @@
 import sys
+import argparse
 import asyncio
 import random
 import syndicate
 from syndicate import patterns as P, actor, dataspace
 from syndicate.schema import simpleChatProtocol, sturdy
 
+parser = argparse.ArgumentParser(description='Simple dataspace-server-mediated text chat.',
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument('--address', metavar='\'<tcp "HOST" PORT>\'',
+                    help='transport address of the server',
+                    default='<ws "ws://localhost:8001/">')
+parser.add_argument('--cap', metavar='\'<ref ...>\'',
+                    help='capability for the dataspace on the server',
+                    default='<ref "syndicate" [] #[pkgN9TBmEd3Q04grVG4Zdw==]>')
+args = parser.parse_args()
+
 Present = simpleChatProtocol.Present
 Says = simpleChatProtocol.Says
-
-conn_str = '<ws "ws://localhost:8001/">'
-cap_str = '<ref "syndicate" [] #[pkgN9TBmEd3Q04grVG4Zdw==]>'
-cap = sturdy.SturdyRef.decode(syndicate.parse(cap_str))
 
 @actor.run_system(name = 'chat', debug = False)
 def main(turn):
     root_facet = turn._facet
 
-    @syndicate.relay.connect(turn, conn_str, cap)
+    @syndicate.relay.connect(turn, args.address, sturdy.SturdyRef.decode(syndicate.parse(args.cap)))
     def on_connected(turn, ds):
         me = 'user_' + str(random.randint(10, 1000))
 
