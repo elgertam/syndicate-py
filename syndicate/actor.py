@@ -36,6 +36,12 @@ def adjust_engine_inhabitant_count(delta):
         log.debug('Inhabitant count reached zero')
         loop.stop()
 
+def remove_noerror(collection, item):
+    try:
+        collection.remove(item)
+    except ValueError:
+        pass
+
 class Actor:
     def __init__(self, boot_proc, name = None, initial_assertions = {}, daemon = False):
         self.name = name or 'a' + str(next(_next_actor_number))
@@ -74,6 +80,9 @@ class Actor:
 
     def at_exit(self, hook):
         self.exit_hooks.append(hook)
+
+    def cancel_at_exit(self, hook):
+        remove_noerror(self.exit_hooks, hook)
 
     def terminate(self, turn, exit_reason):
         if self.exit_reason is not None: return
@@ -123,6 +132,9 @@ class Facet:
 
     def on_stop(self, a):
         self.shutdown_actions.append(a)
+
+    def cancel_on_stop(self, a):
+        remove_noerror(self.shutdown_actions, a)
 
     def isinert(self):
         return len(self.children) == 0 and len(self.outbound) == 0 and self.inert_check_preventers == 0
@@ -186,15 +198,18 @@ async def ensure_awaitable(value):
     else:
         return value
 
-def queue_task(thunk, loop = asyncio):
-    async def task():
-        await ensure_awaitable(thunk())
-    return loop.create_task(task())
+def find_loop(loop = None):
+    return asyncio.get_running_loop() if loop is None else loop
 
-def queue_task_threadsafe(thunk, loop):
+def queue_task(thunk, loop = None):
     async def task():
         await ensure_awaitable(thunk())
-    return asyncio.run_coroutine_threadsafe(task(), loop)
+    return find_loop(loop).create_task(task())
+
+def queue_task_threadsafe(thunk, loop = None):
+    async def task():
+        await ensure_awaitable(thunk())
+    return asyncio.run_coroutine_threadsafe(task(), find_loop(loop))
 
 class Turn:
     @classmethod
@@ -213,7 +228,7 @@ class Turn:
             turn._deliver()
 
     @classmethod
-    def external(cls, loop, facet, action):
+    def external(cls, facet, action, loop = None):
         return queue_task_threadsafe(lambda: cls.run(facet, action), loop)
 
     def __init__(self, facet):
@@ -235,6 +250,24 @@ class Turn:
 
     def prevent_inert_check(self):
         return self._facet.prevent_inert_check()
+
+    def linked_task(self, coro, loop = None):
+        task = None
+        def cancel_linked_task(turn):
+            nonlocal task
+            if task is not None:
+                task.cancel()
+                task = None
+                self._facet.cancel_on_stop(cancel_linked_task)
+                self._facet.actor.cancel_at_exit(cancel_linked_task)
+        async def guarded_task():
+            try:
+                await coro
+            finally:
+                Turn.external(self._facet, cancel_linked_task)
+        task = find_loop(loop).create_task(guarded_task())
+        self._facet.on_stop(cancel_linked_task)
+        self._facet.actor.at_exit(cancel_linked_task)
 
     def stop(self, facet = None, continuation = None):
         if facet is None:
