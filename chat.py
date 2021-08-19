@@ -2,9 +2,8 @@ import sys
 import asyncio
 import random
 import syndicate
-from syndicate import patterns as P, actor, dataspace, gatekeeper
+from syndicate import patterns as P, actor, dataspace
 from syndicate.schema import simpleChatProtocol, sturdy
-from syndicate.during import During
 
 Present = simpleChatProtocol.Present
 Says = simpleChatProtocol.Says
