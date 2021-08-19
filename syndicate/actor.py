@@ -251,7 +251,11 @@ class Turn:
     def prevent_inert_check(self):
         return self._facet.prevent_inert_check()
 
-    def linked_task(self, coro, loop = None):
+    # decorator
+    def linked_task(self, loop = None):
+        return lambda thunk: self._linked_task(thunk(), loop = loop)
+
+    def _linked_task(self, coro, loop = None):
         task = None
         def cancel_linked_task(turn):
             nonlocal task

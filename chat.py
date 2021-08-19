@@ -2,8 +2,8 @@ import sys
 import asyncio
 import random
 import syndicate
-from syndicate import patterns as P, actor
-from syndicate.schema import simpleChatProtocol, gatekeeper, sturdy, dataspace
+from syndicate import patterns as P, actor, dataspace
+from syndicate.schema import simpleChatProtocol, gatekeeper, sturdy
 from syndicate.during import During
 
 Present = simpleChatProtocol.Present
@@ -29,35 +29,33 @@ def main_facet(turn, root_facet, ds):
     f = turn._facet
     turn.publish(ds, Present(me))
 
+    @During().observe(turn, ds, P.rec('Present', P.CAPTURE))
     def on_presence(turn, who):
         print('%s joined' % (who,))
         return lambda turn: print('%s left' % (who,))
-    turn.publish(ds, dataspace.Observe(P.rec('Present', P.CAPTURE),
-                                       During(turn, on_add = on_presence).ref))
 
+    @dataspace.observe(turn, ds, P.rec('Says', P.CAPTURE, P.CAPTURE))
+    @During().msg_handler
     def on_says(turn, who, what):
         print('%s says %r' % (who, what))
-    turn.publish(ds, dataspace.Observe(P.rec('Says', P.CAPTURE, P.CAPTURE),
-                                       During(turn, on_msg = on_says).ref))
 
+    @turn.linked_task()
     async def accept_input():
         reader = asyncio.StreamReader()
         await actor.find_loop().connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
         while line := (await reader.readline()).decode('utf-8'):
             actor.Turn.external(f, lambda turn: turn.send(ds, Says(me, line.strip())))
         actor.Turn.external(f, lambda turn: turn.stop(root_facet))
-    turn.linked_task(accept_input())
 
 def main(turn):
     root_facet = turn._facet
 
+    @During().add_handler
     def handle_gatekeeper(turn, gk):
-        turn.publish(gk.embeddedValue, gatekeeper.Resolve(cap, ds_receiver))
-    gk_receiver = During(turn, on_add = handle_gatekeeper).ref
-
-    def handle_ds(turn, ds):
-        return turn.facet(lambda turn: main_facet(turn, root_facet, ds.embeddedValue))
-    ds_receiver = During(turn, on_add = handle_ds).ref
+        @During().add_handler
+        def handle_ds(turn, ds):
+            return turn.facet(lambda turn: main_facet(turn, root_facet, ds.embeddedValue))
+        turn.publish(gk.embeddedValue, gatekeeper.Resolve(cap, turn.ref(handle_ds)))
 
     disarm = turn.prevent_inert_check()
     async def on_connected(tr):
@@ -72,7 +70,7 @@ def main(turn):
 
     conn = syndicate.relay.TunnelRelay.from_str(turn,
                                                 conn_str,
-                                                gatekeeper_peer = gk_receiver,
+                                                gatekeeper_peer = turn.ref(handle_gatekeeper),
                                                 on_connected = on_connected,
                                                 on_disconnected = on_disconnected)
 

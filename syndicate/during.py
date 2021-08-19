@@ -1,4 +1,5 @@
 from . import actor
+from . import dataspace
 
 def _ignore(*args, **kwargs):
     pass
@@ -7,8 +8,7 @@ def _default_sync(turn, peer):
     turn.send(peer, True)
 
 class During(actor.Entity):
-    def __init__(self, turn, on_add=None, on_msg=None, on_sync=None, name=None):
-        self.ref = turn.ref(self)
+    def __init__(self, on_add=None, on_msg=None, on_sync=None, name=None):
         self.retract_handlers = {}
         self._on_add = on_add or _ignore
         self._on_msg = on_msg or _ignore
@@ -45,3 +45,22 @@ class During(actor.Entity):
 
     def on_sync(self, turn, peer):
         self._on_sync(turn, peer)
+
+    # decorator
+    def add_handler(self, on_add):
+        self._on_add = on_add
+        return self
+
+    # decorator
+    def msg_handler(self, on_msg):
+        self._on_msg = on_msg
+        return self
+
+    # decorator
+    def sync_handler(self, on_sync):
+        self._on_sync = on_sync
+        return self
+
+    # decorator
+    def observe(self, turn, ds, pattern):
+        return lambda on_add: dataspace.observe(turn, ds, pattern)(self.add_handler(on_add))
