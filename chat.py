@@ -12,6 +12,7 @@ conn_str = '<ws "ws://localhost:8001/">'
 cap_str = '<ref "syndicate" [] #[pkgN9TBmEd3Q04grVG4Zdw==]>'
 cap = sturdy.SturdyRef.decode(syndicate.parse(cap_str))
 
+@actor.run_system(name = 'chat', debug = False)
 def main(turn):
     root_facet = turn._facet
 
@@ -37,5 +38,3 @@ def main(turn):
             while line := (await reader.readline()).decode('utf-8'):
                 actor.Turn.external(f, lambda turn: turn.send(ds, Says(me, line.strip())))
             actor.Turn.external(f, lambda turn: turn.stop(root_facet))
-
-actor.start_actor_system(main, name = 'chat', debug = False)

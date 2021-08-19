@@ -14,6 +14,10 @@ _next_actor_number = IdGenerator()
 _next_handle = IdGenerator()
 _next_facet_id = IdGenerator()
 
+# decorator
+def run_system(**kwargs):
+    return lambda boot_proc: start_actor_system(boot_proc, **kwargs)
+
 def start_actor_system(boot_proc, debug = False, name = None, configure_logging = True):
     if configure_logging:
         logging.basicConfig(level = logging.DEBUG if debug else logging.INFO)
