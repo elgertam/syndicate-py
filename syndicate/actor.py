@@ -53,11 +53,11 @@ class Actor:
         if not daemon:
             adjust_engine_inhabitant_count(1)
         self.root = Facet(self, None)
+        self.outbound = initial_assertions or {}
         self.exit_reason = None  # None -> running, True -> terminated OK, exn -> error
         self.exit_hooks = []
         self._log = None
-        Turn.run(Facet(self, self.root, initial_assertions = initial_assertions),
-                 stop_if_inert_after(boot_proc))
+        Turn.run(Facet(self, self.root, set(self.outbound.keys())), stop_if_inert_after(boot_proc))
 
     def __repr__(self):
         return '<Actor:%s>' % (self.name,)
@@ -104,15 +104,24 @@ class Actor:
                 adjust_engine_inhabitant_count(-1)
         queue_task(finish_termination)
 
+    def _pop_outbound(self, handle, clear_from_source_facet):
+        e = self.outbound.pop(handle)
+        if e and clear_from_source_facet:
+            try:
+                e.source_facet.handles.remove(handle)
+            except KeyError:
+                pass
+        return e
+
 class Facet:
-    def __init__(self, actor, parent, initial_assertions = None):
+    def __init__(self, actor, parent, initial_handles=None):
         self.id = next(_next_facet_id)
         self.actor = actor
         self.parent = parent
         if parent:
             parent.children.add(self)
         self.children = set()
-        self.outbound = initial_assertions or {}
+        self.handles = initial_handles or set()
         self.shutdown_actions = []
         self.linked_tasks = []
         self.alive = True
@@ -144,7 +153,7 @@ class Facet:
     def isinert(self):
         return \
             len(self.children) == 0 and \
-            len(self.outbound) == 0 and \
+            len(self.handles) == 0 and \
             len(self.linked_tasks) == 0 and \
             self.inert_check_preventers == 0
 
@@ -193,9 +202,11 @@ class Facet:
             if orderly:
                 for h in self.shutdown_actions:
                     h(turn)
-            for e in self.outbound.values():
-                turn._retract(e)
-            self.outbound.clear()
+            for h in self.handles:
+                # Optimization: don't clear from source facet, the source facet is us and we're
+                # about to clear our handles in one fell swoop.
+                turn._retract(self.actor._pop_outbound(h, clear_from_source_facet=False))
+            self.handles.clear()
 
             if orderly:
                 if parent:
@@ -298,12 +309,13 @@ class Turn:
     def on_stop(self, a):
         self._facet.on_stop(a)
 
-    def spawn(self, boot_proc, name = None, initial_assertions = None, daemon = False):
+    def spawn(self, boot_proc, name = None, initial_handles = None, daemon = False):
         def action(turn):
             new_outbound = {}
-            if initial_assertions is not None:
-                for handle in initial_assertions:
-                    new_outbound[handle] = self._facet.outbound.pop(handle)
+            if initial_handles is not None:
+                for handle in initial_handles:
+                    new_outbound[handle] = \
+                        self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
             queue_task(lambda: Actor(boot_proc,
                                      name = name,
                                      initial_assertions = new_outbound,
@@ -324,8 +336,10 @@ class Turn:
     def _publish(self, ref, assertion, handle):
         # TODO: attenuation
         assertion = preserve(assertion)
-        e = OutboundAssertion(handle, ref)
-        self._facet.outbound[handle] = e
+        facet = self._facet
+        e = OutboundAssertion(facet, handle, ref)
+        facet.actor.outbound[handle] = e
+        facet.handles.add(handle)
         def action(turn):
             e.established = True
             self.log.debug('%r <-- publish %r handle %r', ref, assertion, handle)
@@ -334,7 +348,7 @@ class Turn:
 
     def retract(self, handle):
         if handle is not None:
-            e = self._facet.outbound.pop(handle, None)
+            e = self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
             if e is not None:
                 self._retract(e)
 
@@ -344,7 +358,8 @@ class Turn:
         return new_handle
 
     def _retract(self, e):
-        # Assumes e has already been removed from self._facet.outbound
+        # Assumes e has already been removed from self._facet.actor.outbound and the
+        # appropriate set of handles
         def action(turn):
             if e.established:
                 e.established = False
@@ -408,14 +423,15 @@ class Ref:
         return '<Ref:%s/%r>' % (self.facet._repr_labels(), self.entity)
 
 class OutboundAssertion:
-    def __init__(self, handle, ref):
+    def __init__(self, source_facet, handle, ref):
+        self.source_facet = source_facet
         self.handle = handle
         self.ref = ref
         self.established = False
 
     def __repr__(self):
-        return '<OutboundAssertion handle=%s ref=%r%s>' % \
-            (self.handle, self.ref, ' established' if self.established else '')
+        return '<OutboundAssertion src=%r handle=%s ref=%r%s>' % \
+            (self.source_facet, self.handle, self.ref, ' established' if self.established else '')
 
 # Can act as a mixin
 class Entity:
