@@ -64,8 +64,11 @@ def main(turn):
                 def a(turn, two):
                     print('A got assertion:', two)
                     turn.send(b.embeddedValue, Three())
-                    return lambda turn: print('Assertion', two, 'from B went')
-                turn.publish(b.embeddedValue, One(Embedded(turn.ref(a))))
+                    def on_two_retracted(turn):
+                        print('Assertion', two, 'from B went')
+                        turn.retract(one_handle)
+                    return on_two_retracted
+                one_handle = turn.publish(b.embeddedValue, One(Embedded(turn.ref(a))))
                 return lambda turn: print('B\'s Boot record went')
         else:
             # We are "B".
