@@ -65,6 +65,8 @@ class During(Handler):
             def facet(turn):
                 if self.inert_ok:
                     turn.prevent_inert_check()
-                handler(turn, *args)
+                maybe_stop_action = handler(turn, *args)
+                if maybe_stop_action is not None:
+                    turn.on_stop(maybe_stop_action)
             return lambda turn: turn.stop(facet)
         return facet_handler
