@@ -10,7 +10,7 @@ from . import actor, encode, transport, Decoder, gatekeeper
 from .during import During
 from .actor import _inert_ref, Turn
 from .idgen import IdGenerator
-from .schema import externalProtocol as protocol, sturdy, transportAddress
+from .schema import protocol, sturdy, transportAddress
 
 class InboundAssertion:
     def __init__(self, remote_handle, local_handle, pins):
