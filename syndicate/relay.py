@@ -99,7 +99,7 @@ class TunnelRelay:
         if self.publish_service is None:
             self.next_local_oid = IdGenerator(initial_value=0)
         else:
-            self.next_local_oid = IdGenerator(initial_value=1)
+            self.next_local_oid = IdGenerator(initial_value=(self.publish_oid + 1))
             # Very specific specialization of logic in rewrite_ref_out
             ws = WireSymbol(self.publish_oid, self.publish_service, self.exported_references)
             self.exported_references.get_ref([], self.publish_service, False, lambda: ws)
