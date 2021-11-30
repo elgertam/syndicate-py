@@ -18,8 +18,6 @@ class InboundAssertion:
         self.local_handle = local_handle
         self.pins = pins
 
-_next_local_oid = IdGenerator()
-
 class WireSymbol:
     def __init__(self, oid, ref, membrane):
         self.oid = oid
@@ -98,7 +96,10 @@ class TunnelRelay:
         self.pending_turn = []
         self._connected = False
         self.gatekeeper_handle = None
-        if self.publish_service is not None:
+        if self.publish_service is None:
+            self.next_local_oid = IdGenerator(initial_value=0)
+        else:
+            self.next_local_oid = IdGenerator(initial_value=1)
             # Very specific specialization of logic in rewrite_ref_out
             ws = WireSymbol(self.publish_oid, self.publish_service, self.exported_references)
             self.exported_references.get_ref([], self.publish_service, False, lambda: ws)
@@ -138,7 +139,7 @@ class TunnelRelay:
             return sturdy.WireRef.yours(sturdy.Oid(r.entity.oid), ())
         else:
             ws = self.exported_references.get_ref(
-                pins, r, is_transient, lambda: WireSymbol(next(_next_local_oid), r,
+                pins, r, is_transient, lambda: WireSymbol(next(self.next_local_oid), r,
                                                           self.exported_references))
             return sturdy.WireRef.mine(sturdy.Oid(ws.oid))
 
