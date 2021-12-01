@@ -389,19 +389,23 @@ class Turn:
         self._enqueue(ref.facet, action)
 
     def _enqueue(self, target_facet, action):
-        if target_facet not in self.queues:
-            self.queues[target_facet] = []
-        self.queues[target_facet].append(action)
+        target_actor = target_facet.actor
+        if target_actor not in self.queues:
+            self.queues[target_actor] = []
+        self.queues[target_actor].append((target_facet, action))
 
     def _deliver(self):
-        for (facet, q) in self.queues.items():
+        for (actor, q) in self.queues.items():
             # Stupid python scoping bites again
-            def make_deliver_q(facet, q): # gratuitous
+            def make_deliver_q(actor, q): # gratuitous
                 def deliver_q(turn):
-                    for action in q:
+                    saved_facet = turn._facet
+                    for (facet, action) in q:
+                        turn._facet = facet
                         action(turn)
-                return lambda: Turn.run(facet, deliver_q)
-            queue_task(make_deliver_q(facet, q))
+                    turn._facet = saved_facet
+                return lambda: Turn.run(actor.root, deliver_q)
+            queue_task(make_deliver_q(actor, q))
         self.queues = {}
 
 def stop_if_inert_after(action):
