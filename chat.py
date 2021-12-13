@@ -10,7 +10,7 @@ parser = argparse.ArgumentParser(description='Simple dataspace-server-mediated t
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument('--address', metavar='\'<tcp "HOST" PORT>\'',
                     help='transport address of the server',
-                    default='<ws "ws://localhost:8001/">')
+                    default='<ws "ws://localhost:9001/">')
 parser.add_argument('--cap', metavar='\'<ref ...>\'',
                     help='capability for the dataspace on the server',
                     default='<ref "syndicate" [] #[pkgN9TBmEd3Q04grVG4Zdw==]>')
