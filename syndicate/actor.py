@@ -88,7 +88,7 @@ class Actor:
     def cancel_at_exit(self, hook):
         remove_noerror(self.exit_hooks, hook)
 
-    def terminate(self, turn, exit_reason):
+    def _terminate(self, turn, exit_reason):
         if self.exit_reason is not None: return
         self.log.debug('Terminating %r with exit_reason %r', self, exit_reason)
         self.exit_reason = exit_reason
@@ -96,13 +96,9 @@ class Actor:
             self.log.error('crashed: %s' % (exit_reason,))
         for h in self.exit_hooks:
             h(turn)
-        def finish_termination():
-            Turn.run(self.root,
-                     lambda turn: self.root._terminate(turn, exit_reason == True),
-                     zombie_turn = True)
-            if not self._daemon:
-                adjust_engine_inhabitant_count(-1)
-        queue_task(finish_termination)
+        self.root._terminate(turn, exit_reason == True)
+        if not self._daemon:
+            adjust_engine_inhabitant_count(-1)
 
     def _pop_outbound(self, handle, clear_from_source_facet):
         e = self.outbound.pop(handle)
@@ -207,8 +203,9 @@ class Facet:
             for child in list(self.children):
                 child._terminate(turn, orderly)
             if orderly:
-                for h in self.shutdown_actions:
-                    h(turn)
+                with ActiveFacet(turn, self.parent or self):
+                    for h in self.shutdown_actions:
+                        h(turn)
             for h in self.handles:
                 # Optimization: don't clear from source facet, the source facet is us and we're
                 # about to clear our handles in one fell swoop.
@@ -218,11 +215,9 @@ class Facet:
             if orderly:
                 if parent:
                     if parent.isinert():
-                        Turn.run(parent, lambda turn: parent._terminate(turn, True))
+                        parent._terminate(turn, True)
                 else:
-                    Turn.run(self.actor.root,
-                             lambda turn: self.actor.terminate(turn, True),
-                             zombie_turn = True)
+                    self.actor._terminate(turn, True)
 
 class ActiveFacet:
     def __init__(self, turn, facet):
@@ -270,7 +265,7 @@ class Turn:
         except:
             ei = sys.exc_info()
             facet.log.error('%s', ''.join(traceback.format_exception(*ei)))
-            Turn.run(facet.actor.root, lambda turn: facet.actor.terminate(turn, ei[1]))
+            Turn.run(facet.actor.root, lambda turn: facet.actor._terminate(turn, ei[1]))
         else:
             turn._deliver()
 
@@ -306,11 +301,12 @@ class Turn:
     def stop(self, facet = None, continuation = None):
         if facet is None:
             facet = self._facet
-        def action(turn):
-            facet._terminate(turn, True)
+        if facet.parent is None:
+            self.stop_actor()
+        else:
             if continuation is not None:
-                continuation(turn)
-        self._enqueue(facet.parent, action)
+                facet.on_stop(continuation)
+            facet._terminate(self, True)
 
     # can also be used as a decorator
     def on_stop(self, a):
@@ -330,10 +326,10 @@ class Turn:
         self._enqueue(self._facet, action)
 
     def stop_actor(self):
-        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor.terminate(turn, True))
+        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor._terminate(turn, True))
 
     def crash(self, exn):
-        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor.terminate(turn, exn))
+        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor._terminate(turn, exn))
 
     def publish(self, ref, assertion):
         handle = next(_next_handle)
