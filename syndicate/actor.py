@@ -126,10 +126,17 @@ class Facet:
         self.linked_tasks = []
         self.alive = True
         self.inert_check_preventers = 0
+        self._log = None
 
     @property
     def log(self):
-        return self.actor.log
+        if self._log is None:
+            if self.parent is None:
+                p = self.actor.log
+            else:
+                p = self.parent.log
+            self._log = p.getChild(str(self.id))
+        return self._log
 
     def _repr_labels(self):
         pieces = []
