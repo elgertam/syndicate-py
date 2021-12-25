@@ -1,9 +1,9 @@
-from . import actor
+from . import turn, actor
 
 def _ignore(*args, **kwargs):
     pass
 
-def _default_sync(turn, peer):
+def _default_sync(peer):
     turn.send(peer, True)
 
 class Handler(actor.Entity):
@@ -27,21 +27,21 @@ class Handler(actor.Entity):
     def _wrap_add_handler(self, handler):
         return handler
 
-    def on_publish(self, turn, v, handle):
-        retraction_handler = self._on_add(turn, *self._wrap(v))
+    def on_publish(self, v, handle):
+        retraction_handler = self._on_add(*self._wrap(v))
         if retraction_handler is not None:
             self.retraction_handlers[handle] = retraction_handler
 
-    def on_retract(self, turn, handle):
+    def on_retract(self, handle):
         retraction_handler = self.retraction_handlers.pop(handle, None)
         if retraction_handler is not None:
-            retraction_handler(turn)
+            retraction_handler()
 
-    def on_message(self, turn, v):
-        self._on_msg(turn, *self._wrap(v))
+    def on_message(self, v):
+        self._on_msg(*self._wrap(v))
 
-    def on_sync(self, turn, peer):
-        self._on_sync(turn, peer)
+    def on_sync(self, peer):
+        self._on_sync(peer)
 
     # decorator
     def add_handler(self, on_add):
@@ -60,13 +60,13 @@ class Handler(actor.Entity):
 
 class During(Handler):
     def _wrap_add_handler(self, handler):
-        def facet_handler(turn, *args):
+        def facet_handler(*args):
             @turn.facet
-            def facet(turn):
+            def facet():
                 if self.inert_ok:
                     turn.prevent_inert_check()
-                maybe_stop_action = handler(turn, *args)
+                maybe_stop_action = handler(*args)
                 if maybe_stop_action is not None:
                     turn.on_stop(maybe_stop_action)
-            return lambda turn: turn.stop(facet)
+            return lambda: turn.stop(facet)
         return facet_handler

@@ -3,10 +3,12 @@ import inspect
 import logging
 import sys
 import traceback
+import threading
 
 from preserves import Embedded, preserve
 
 from .idgen import IdGenerator
+from .metapy import staticproperty
 from .dataflow import Graph, Field
 
 log = logging.getLogger(__name__)
@@ -14,6 +16,9 @@ log = logging.getLogger(__name__)
 _next_actor_number = IdGenerator()
 _next_handle = IdGenerator()
 _next_facet_id = IdGenerator()
+
+_active = threading.local()
+_active.turn = None
 
 # decorator
 def run_system(**kwargs):
@@ -96,19 +101,19 @@ class Actor:
     def cancel_at_exit(self, hook):
         remove_noerror(self.exit_hooks, hook)
 
-    def _repair_dataflow_graph(self, turn):
+    def _repair_dataflow_graph(self):
         if self._dataflow_graph is not None:
-            self._dataflow_graph.repair_damage(lambda a: a(turn))
+            self._dataflow_graph.repair_damage(lambda a: a())
 
-    def _terminate(self, turn, exit_reason):
+    def _terminate(self, exit_reason):
         if self.exit_reason is not None: return
         self.log.debug('Terminating %r with exit_reason %r', self, exit_reason)
         self.exit_reason = exit_reason
         if exit_reason != True:
             self.log.error('crashed: %s' % (exit_reason,))
         for h in self.exit_hooks:
-            h(turn)
-        self.root._terminate(turn, exit_reason == True)
+            h()
+        self.root._terminate(exit_reason == True)
         if not self._daemon:
             adjust_engine_inhabitant_count(-1)
 
@@ -122,6 +127,10 @@ class Actor:
         return e
 
 class Facet:
+    @staticproperty
+    def active():
+        return _active.turn._facet
+
     def __init__(self, actor, parent, initial_handles=None):
         self.id = next(_next_facet_id)
         self.actor = actor
@@ -184,7 +193,7 @@ class Facet:
 
     def linked_task(self, coro_fn, loop = None):
         task = None
-        def cancel_linked_task(turn):
+        def cancel_linked_task():
             nonlocal task
             if task is not None:
                 remove_noerror(self.linked_tasks, task)
@@ -202,7 +211,7 @@ class Facet:
         self.on_stop(cancel_linked_task)
         self.actor.at_exit(cancel_linked_task)
 
-    def _terminate(self, turn, orderly):
+    def _terminate(self, orderly):
         if not self.alive: return
         self.log.debug('%s terminating %r', 'orderly' if orderly else 'disorderly', self)
         self.alive = False
@@ -211,13 +220,14 @@ class Facet:
         if parent:
             parent.children.remove(self)
 
-        with ActiveFacet(turn, self):
+        with ActiveFacet(self):
             for child in list(self.children):
-                child._terminate(turn, orderly)
+                child._terminate(orderly)
             if orderly:
-                with ActiveFacet(turn, self.parent or self):
+                with ActiveFacet(self.parent or self):
                     for h in self.shutdown_actions:
-                        h(turn)
+                        h()
+            turn = Turn.active
             for h in self.handles:
                 # Optimization: don't clear from source facet, the source facet is us and we're
                 # about to clear our handles in one fell swoop.
@@ -227,13 +237,13 @@ class Facet:
             if orderly:
                 if parent:
                     if parent.isinert():
-                        parent._terminate(turn, True)
+                        parent._terminate(True)
                 else:
-                    self.actor._terminate(turn, True)
+                    self.actor._terminate(True)
 
 class ActiveFacet:
-    def __init__(self, turn, facet):
-        self.turn = turn
+    def __init__(self, facet):
+        self.turn = Turn.active
         self.outer_facet = None
         self.inner_facet = facet
 
@@ -266,6 +276,10 @@ def queue_task_threadsafe(thunk, loop = None):
     return asyncio.run_coroutine_threadsafe(task(), find_loop(loop))
 
 class Turn:
+    @staticproperty
+    def active():
+        return _active.turn
+
     @classmethod
     def run(cls, facet, action, zombie_turn = False):
         if not zombie_turn:
@@ -273,12 +287,17 @@ class Turn:
             if not facet.alive: return
         turn = cls(facet)
         try:
-            action(turn)
-            facet.actor._repair_dataflow_graph(turn)
+            saved = Turn.active
+            _active.turn = turn
+            try:
+                action()
+                facet.actor._repair_dataflow_graph()
+            finally:
+                _active.turn = saved
         except:
             ei = sys.exc_info()
             facet.log.error('%s', ''.join(traceback.format_exception(*ei)))
-            Turn.run(facet.actor.root, lambda turn: facet.actor._terminate(turn, ei[1]))
+            Turn.run(facet.actor.root, lambda: facet.actor._terminate(ei[1]))
         else:
             turn._deliver()
 
@@ -300,8 +319,8 @@ class Turn:
     # this actually can work as a decorator as well as a normal method!
     def facet(self, boot_proc):
         new_facet = Facet(self._facet.actor, self._facet)
-        with ActiveFacet(self, new_facet):
-            stop_if_inert_after(boot_proc)(self)
+        with ActiveFacet(new_facet):
+            stop_if_inert_after(boot_proc)()
         return new_facet
 
     def prevent_inert_check(self):
@@ -319,14 +338,14 @@ class Turn:
         else:
             if continuation is not None:
                 facet.on_stop(continuation)
-            facet._terminate(self, True)
+            facet._terminate(True)
 
     # can also be used as a decorator
     def on_stop(self, a):
         self._facet.on_stop(a)
 
     def spawn(self, boot_proc, name = None, initial_handles = None, daemon = False):
-        def action(turn):
+        def action():
             new_outbound = {}
             if initial_handles is not None:
                 for handle in initial_handles:
@@ -339,10 +358,10 @@ class Turn:
         self._enqueue(self._facet, action)
 
     def stop_actor(self):
-        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor._terminate(turn, True))
+        self._enqueue(self._facet.actor.root, lambda: self._facet.actor._terminate(True))
 
     def crash(self, exn):
-        self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor._terminate(turn, exn))
+        self._enqueue(self._facet.actor.root, lambda: self._facet.actor._terminate(exn))
 
     def field(self, initial_value=None, name=None):
         return Field(self._facet.actor.dataflow_graph, initial_value, name)
@@ -351,16 +370,16 @@ class Turn:
     def dataflow(self, a):
         f = self._facet
         f.prevent_inert_check()
-        def subject(turn):
+        def subject():
             if not f.alive: return
-            with ActiveFacet(turn, f):
-                a(turn)
-        f.on_stop(lambda turn: f.actor.dataflow_graph.forget_subject(subject))
+            with ActiveFacet(f):
+                a()
+        f.on_stop(lambda: f.actor.dataflow_graph.forget_subject(subject))
         f.actor.dataflow_graph.with_subject(subject, lambda: subject(self))
 
     def publish_dataflow(self, assertion_function):
         endpoint = DataflowPublication(assertion_function)
-        self.dataflow(lambda turn: endpoint.update(turn))
+        self.dataflow(lambda: endpoint.update())
 
     def publish(self, ref, assertion):
         handle = next(_next_handle)
@@ -374,10 +393,10 @@ class Turn:
         e = OutboundAssertion(facet, handle, ref)
         facet.actor.outbound[handle] = e
         facet.handles.add(handle)
-        def action(turn):
+        def action():
             e.established = True
             self.log.debug('%r <-- publish %r handle %r', ref, assertion, handle)
-            ref.entity.on_publish(turn, assertion, handle)
+            ref.entity.on_publish(assertion, handle)
         self._enqueue(ref.facet, action)
 
     def retract(self, handle):
@@ -397,32 +416,32 @@ class Turn:
     def _retract(self, e):
         # Assumes e has already been removed from self._facet.actor.outbound and the
         # appropriate set of handles
-        def action(turn):
+        def action():
             if e.established:
                 e.established = False
                 self.log.debug('%r <-- retract handle %r', e.ref, e.handle)
-                e.ref.entity.on_retract(turn, e.handle)
+                e.ref.entity.on_retract(e.handle)
         self._enqueue(e.ref.facet, action)
 
     def sync(self, ref, k):
         class SyncContinuation(Entity):
-            def on_message(self, turn, _value):
-                k(turn)
+            def on_message(self, _value):
+                k()
         self._sync(ref, self.ref(SyncContinuation()))
 
     def _sync(self, ref, peer):
         peer = preserve(peer)
-        def action(turn):
+        def action():
             self.log.debug('%r <-- sync peer %r', ref, peer)
-            ref.entity.on_sync(turn, peer)
+            ref.entity.on_sync(peer)
         self._enqueue(ref.facet, action)
 
     def send(self, ref, message):
         # TODO: attenuation
         message = preserve(message)
-        def action(turn):
+        def action():
             self.log.debug('%r <-- message %r', ref, message)
-            ref.entity.on_message(turn, message)
+            ref.entity.on_message(message)
         self._enqueue(ref.facet, action)
 
     def _enqueue(self, target_facet, action):
@@ -435,20 +454,22 @@ class Turn:
         for (actor, q) in self.queues.items():
             # Stupid python scoping bites again
             def make_deliver_q(actor, q): # gratuitous
-                def deliver_q(turn):
+                def deliver_q():
+                    turn = Turn.active
                     saved_facet = turn._facet
                     for (facet, action) in q:
                         turn._facet = facet
-                        action(turn)
+                        action()
                     turn._facet = saved_facet
                 return lambda: Turn.run(actor.root, deliver_q)
             queue_task(make_deliver_q(actor, q))
         self.queues = {}
 
 def stop_if_inert_after(action):
-    def wrapped_action(turn):
-        action(turn)
-        def check_action(turn):
+    def wrapped_action():
+        turn = Turn.active
+        action()
+        def check_action():
             if (turn._facet.parent is not None and not turn._facet.parent.alive) \
                or turn._facet.isinert():
                 turn.stop()
@@ -462,12 +483,12 @@ class DataflowPublication:
         self.target = None
         self.assertion = None
 
-    def update(self, turn):
-        (next_target, next_assertion) = self.assertion_function(turn) or (None, None)
+    def update(self):
+        (next_target, next_assertion) = self.assertion_function() or (None, None)
         if next_target != self.target or next_assertion != self.assertion_function:
             self.target = next_target
             self.assertion = next_assertion
-            self.handle = turn.replace(self.target, self.handle, self.assertion)
+            self.handle = Turn.active.replace(self.target, self.handle, self.assertion)
 
 class Ref:
     def __init__(self, facet, entity):
@@ -490,27 +511,27 @@ class OutboundAssertion:
 
 # Can act as a mixin
 class Entity:
-    def on_publish(self, turn, v, handle):
+    def on_publish(self, v, handle):
         pass
 
-    def on_retract(self, turn, handle):
+    def on_retract(self, handle):
         pass
 
-    def on_message(self, turn, v):
+    def on_message(self, v):
         pass
 
-    def on_sync(self, turn, peer):
-        turn.send(peer, True)
+    def on_sync(self, peer):
+        Turn.active.send(peer, True)
 
 _inert_actor = None
 _inert_facet = None
 _inert_ref = None
 _inert_entity = Entity()
-def __boot_inert(turn):
+def __boot_inert():
     global _inert_actor, _inert_facet, _inert_ref
-    _inert_actor = turn._facet.actor
-    _inert_facet = turn._facet
-    _inert_ref = turn.ref(_inert_entity)
+    _inert_actor = Turn.active._facet.actor
+    _inert_facet = Turn.active._facet
+    _inert_ref = Turn.active.ref(_inert_entity)
 async def __run_inert():
     Actor(__boot_inert, name = '_inert_actor')
 asyncio.get_event_loop().run_until_complete(__run_inert())

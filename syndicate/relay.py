@@ -6,9 +6,9 @@ import logging
 from preserves import Embedded, stringify
 from preserves.fold import map_embeddeds
 
-from . import actor, encode, transport, Decoder, gatekeeper
+from . import actor, encode, transport, Decoder, gatekeeper, turn
 from .during import During
-from .actor import _inert_ref, Turn
+from .actor import _inert_ref
 from .idgen import IdGenerator
 from .schema import protocol, sturdy, transportAddress
 
@@ -66,7 +66,6 @@ def drop_all(wss):
 # There are other kinds of relay. This one has exactly two participants connected to each other.
 class TunnelRelay:
     def __init__(self,
-                 turn,
                  address,
                  gatekeeper_peer = None,
                  gatekeeper_oid = 0,
@@ -75,7 +74,7 @@ class TunnelRelay:
                  on_connected = None,
                  on_disconnected = None,
                  ):
-        self.facet = turn._facet
+        self.facet = turn.active_facet()
         self.facet.on_stop(self._shutdown)
         self.address = address
         self.gatekeeper_peer = gatekeeper_peer
@@ -108,7 +107,7 @@ class TunnelRelay:
     def connected(self):
         return self._connected
 
-    def _shutdown(self, turn):
+    def _shutdown(self):
         self._disconnect()
 
     def deregister(self, handle):
@@ -143,13 +142,13 @@ class TunnelRelay:
                                                           self.exported_references))
             return sturdy.WireRef.mine(sturdy.Oid(ws.oid))
 
-    def rewrite_in(self, turn, assertion, pins):
+    def rewrite_in(self, assertion, pins):
         rewritten = map_embeddeds(
-            lambda wire_ref: Embedded(self.rewrite_ref_in(turn, wire_ref, pins)),
+            lambda wire_ref: Embedded(self.rewrite_ref_in(wire_ref, pins)),
             assertion)
         return rewritten
 
-    def rewrite_ref_in(self, turn, wire_ref, pins):
+    def rewrite_ref_in(self, wire_ref, pins):
         if wire_ref.VARIANT.name == 'mine':
             oid = wire_ref.oid.value
             ws = self.imported_references.get_oid(
@@ -166,59 +165,57 @@ class TunnelRelay:
 
     def _on_disconnected(self):
         self._connected = False
-        def retract_inbound(turn):
+        def retract_inbound():
             for ia in self.inbound_assertions.values():
                 turn.retract(ia.local_handle)
             if self.gatekeeper_handle is not None:
                 turn.retract(self.gatekeeper_handle)
             self._reset()
-        Turn.run(self.facet, retract_inbound)
+        turn.run(self.facet, retract_inbound)
         self._disconnect()
 
     def _on_connected(self):
         self._connected = True
         if self.gatekeeper_peer is not None:
-            def connected_action(turn):
-                gk = self.rewrite_ref_in(turn,
-                                         sturdy.WireRef.mine(sturdy.Oid(self.gatekeeper_oid)),
-                                         [])
+            def connected_action():
+                gk = self.rewrite_ref_in(sturdy.WireRef.mine(sturdy.Oid(self.gatekeeper_oid)), [])
                 self.gatekeeper_handle = turn.publish(self.gatekeeper_peer, Embedded(gk))
-            Turn.run(self.facet, connected_action)
+            turn.run(self.facet, connected_action)
 
     def _on_event(self, v):
-        Turn.run(self.facet, lambda turn: self._handle_event(turn, v))
+        turn.run(self.facet, lambda: self._handle_event(v))
 
-    def _handle_event(self, turn, v):
+    def _handle_event(self, v):
         packet = protocol.Packet.decode(v)
         variant = packet.VARIANT.name
-        if variant == 'Turn': self._handle_turn_events(turn, packet.value.value)
-        elif variant == 'Error': self._on_error(turn, packet.value.message, packet.value.detail)
+        if variant == 'Turn': self._handle_turn_events(packet.value.value)
+        elif variant == 'Error': self._on_error(packet.value.message, packet.value.detail)
 
-    def _on_error(self, turn, message, detail):
+    def _on_error(self, message, detail):
         self.facet.log.error('Error from server: %r (detail: %r)', message, detail)
         self._disconnect()
 
-    def _handle_turn_events(self, turn, events):
+    def _handle_turn_events(self, events):
         for e in events:
             pins = []
             ref = self._lookup_exported_oid(e.oid.value, pins)
             event = e.event
             variant = event.VARIANT.name
             if variant == 'Assert':
-                self._handle_publish(pins, turn, ref, event.value.assertion.value, event.value.handle.value)
+                self._handle_publish(pins, ref, event.value.assertion.value, event.value.handle.value)
             elif variant == 'Retract':
-                self._handle_retract(pins, turn, ref, event.value.handle.value)
+                self._handle_retract(pins, ref, event.value.handle.value)
             elif variant == 'Message':
-                self._handle_message(pins, turn, ref, event.value.body.value)
+                self._handle_message(pins, ref, event.value.body.value)
             elif variant == 'Sync':
-                self._handle_sync(pins, turn, ref, event.value.peer)
+                self._handle_sync(pins, ref, event.value.peer)
 
-    def _handle_publish(self, pins, turn, ref, assertion, remote_handle):
-        assertion = self.rewrite_in(turn, assertion, pins)
+    def _handle_publish(self, pins, ref, assertion, remote_handle):
+        assertion = self.rewrite_in(assertion, pins)
         self.inbound_assertions[remote_handle] = \
             InboundAssertion(remote_handle, turn.publish(ref, assertion), pins)
 
-    def _handle_retract(self, pins, turn, ref, remote_handle):
+    def _handle_retract(self, pins, ref, remote_handle):
         ia = self.inbound_assertions.pop(remote_handle, None)
         if ia is None:
             raise ValueError('Peer retracted invalid handle %s' % (remote_handle,))
@@ -226,28 +223,28 @@ class TunnelRelay:
         drop_all(pins)
         turn.retract(ia.local_handle)
 
-    def _handle_message(self, pins, turn, ref, message):
-        message = self.rewrite_in(turn, message, pins)
+    def _handle_message(self, pins, ref, message):
+        message = self.rewrite_in(message, pins)
         for ws in pins:
             if ws.count == 1:
                 raise ValueError('Cannot receive transient reference')
         turn.send(ref, message)
         drop_all(pins)
 
-    def _handle_sync(self, pins, turn, ref, wire_peer):
-        peer = self.rewrite_ref_in(turn, wire_peer, pins)
-        def done(turn):
+    def _handle_sync(self, pins, ref, wire_peer):
+        peer = self.rewrite_ref_in(wire_peer, pins)
+        def done():
             turn.send(peer, True)
             drop_all(pins)
         turn.sync(ref, done)
 
     def _send(self, remote_oid, turn_event):
         if len(self.pending_turn) == 0:
-            def flush_pending(turn):
+            def flush_pending():
                 packet = protocol.Packet.Turn(protocol.Turn(self.pending_turn))
                 self.pending_turn = []
                 self._send_bytes(encode(packet))
-            actor.queue_task(lambda: Turn.run(self.facet, flush_pending))
+            actor.queue_task(lambda: turn.run(self.facet, flush_pending))
         self.pending_turn.append(protocol.TurnEvent(protocol.Oid(remote_oid), turn_event))
 
     def _send_bytes(self, bs):
@@ -263,17 +260,16 @@ class TunnelRelay:
             should_run = await (on_disconnected or _default_on_disconnected)(self, did_connect)
 
     @staticmethod
-    def from_str(turn, conn_str, **kwargs):
-        return transport.connection_from_str(turn, conn_str, **kwargs)
+    def from_str(conn_str, **kwargs):
+        return transport.connection_from_str(conn_str, **kwargs)
 
 # decorator
-def connect(turn, conn_str, cap, **kwargs):
+def connect(conn_str, cap, **kwargs):
     def prepare_resolution_handler(handler):
         @During().add_handler
-        def handle_gatekeeper(turn, gk):
-            gatekeeper.resolve(turn, gk.embeddedValue, cap)(handler)
+        def handle_gatekeeper(gk):
+            gatekeeper.resolve(gk.embeddedValue, cap)(handler)
         return transport.connection_from_str(
-            turn,
             conn_str,
             gatekeeper_peer = turn.ref(handle_gatekeeper),
             **kwargs)
@@ -290,20 +286,20 @@ class RelayEntity(actor.Entity):
     def _send(self, e):
         self.relay._send(self.oid, e)
 
-    def on_publish(self, turn, assertion, handle):
+    def on_publish(self, assertion, handle):
         self._send(protocol.Event.Assert(protocol.Assert(
             protocol.Assertion(self.relay.register(self.oid, assertion, handle)),
             protocol.Handle(handle))))
 
-    def on_retract(self, turn, handle):
+    def on_retract(self, handle):
         self.relay.deregister(handle)
         self._send(protocol.Event.Retract(protocol.Retract(protocol.Handle(handle))))
 
-    def on_message(self, turn, message):
+    def on_message(self, message):
         self._send(protocol.Event.Message(protocol.Message(
             protocol.Assertion(self.relay.register(self.oid, message, None)))))
 
-    def on_sync(self, turn, peer):
+    def on_sync(self, peer):
         pins = []
         self.relay.register_imported_oid(self.oid, pins)
         entity = SyncPeerEntity(self.relay, peer, pins)
@@ -316,7 +312,7 @@ class SyncPeerEntity(actor.Entity):
         self.peer = peer
         self.pins = pins
 
-    def on_message(self, turn, body):
+    def on_message(self, body):
         drop_all(self.pins)
         turn.send(self.peer, body)
 
@@ -332,8 +328,8 @@ async def _default_on_disconnected(relay, did_connect):
     return True
 
 class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
-    def __init__(self, turn, address, **kwargs):
-        super().__init__(turn, address, **kwargs)
+    def __init__(self, address, **kwargs):
+        super().__init__(address, **kwargs)
         self.decoder = None
         self.stop_signal = None
         self.transport = None
@@ -402,8 +398,8 @@ class UnixSocketTunnelRelay(_StreamTunnelRelay):
 
 @transport.address(transportAddress.WebSocket)
 class WebsocketTunnelRelay(TunnelRelay):
-    def __init__(self, turn, address, **kwargs):
-        super().__init__(turn, address, **kwargs)
+    def __init__(self, address, **kwargs):
+        super().__init__(address, **kwargs)
         self.loop = None
         self.ws = None
 
@@ -457,8 +453,8 @@ class WebsocketTunnelRelay(TunnelRelay):
 
 @transport.address(transportAddress.Stdio)
 class PipeTunnelRelay(_StreamTunnelRelay):
-    def __init__(self, turn, address, input_fileobj = sys.stdin, output_fileobj = sys.stdout, **kwargs):
-        super().__init__(turn, address, **kwargs)
+    def __init__(self, address, input_fileobj = sys.stdin, output_fileobj = sys.stdout, **kwargs):
+        super().__init__(address, **kwargs)
         self.input_fileobj = input_fileobj
         self.output_fileobj = output_fileobj
         self.reader = asyncio.StreamReader()
@@ -470,10 +466,10 @@ class PipeTunnelRelay(_StreamTunnelRelay):
         self.output_fileobj.buffer.write(bs)
         self.output_fileobj.buffer.flush()
 
-def run_stdio_service(turn, entity):
-    PipeTunnelRelay(turn, transportAddress.Stdio(), publish_service=turn.ref(entity))
+def run_stdio_service(entity):
+    PipeTunnelRelay(transportAddress.Stdio(), publish_service=turn.ref(entity))
 
 # decorator
 def service(**kwargs):
     return lambda entity: \
-        actor.start_actor_system(lambda turn: run_stdio_service(turn, entity), **kwargs)
+        actor.start_actor_system(lambda: run_stdio_service(entity), **kwargs)
