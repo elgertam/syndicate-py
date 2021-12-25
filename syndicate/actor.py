@@ -375,7 +375,7 @@ class Turn:
             with ActiveFacet(f):
                 a()
         f.on_stop(lambda: f.actor.dataflow_graph.forget_subject(subject))
-        f.actor.dataflow_graph.with_subject(subject, lambda: subject(self))
+        f.actor.dataflow_graph.with_subject(subject, lambda: subject())
 
     def publish_dataflow(self, assertion_function):
         endpoint = DataflowPublication(assertion_function)
