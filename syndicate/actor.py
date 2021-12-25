@@ -7,6 +7,7 @@ import traceback
 from preserves import Embedded, preserve
 
 from .idgen import IdGenerator
+from .dataflow import Graph, Field
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ class Actor:
         self.exit_reason = None  # None -> running, True -> terminated OK, exn -> error
         self.exit_hooks = []
         self._log = None
+        self._dataflow_graph = None
         Turn.run(Facet(self, self.root, set(self.outbound.keys())), stop_if_inert_after(boot_proc))
 
     def __repr__(self):
@@ -82,11 +84,21 @@ class Actor:
             self._log = logging.getLogger('syndicate.Actor.%s' % (self.name,))
         return self._log
 
+    @property
+    def dataflow_graph(self):
+        if self._dataflow_graph is None:
+            self._dataflow_graph = Graph()
+        return self._dataflow_graph
+
     def at_exit(self, hook):
         self.exit_hooks.append(hook)
 
     def cancel_at_exit(self, hook):
         remove_noerror(self.exit_hooks, hook)
+
+    def _repair_dataflow_graph(self, turn):
+        if self._dataflow_graph is not None:
+            self._dataflow_graph.repair_damage(lambda a: a(turn))
 
     def _terminate(self, turn, exit_reason):
         if self.exit_reason is not None: return
@@ -262,6 +274,7 @@ class Turn:
         turn = cls(facet)
         try:
             action(turn)
+            facet.actor._repair_dataflow_graph(turn)
         except:
             ei = sys.exc_info()
             facet.log.error('%s', ''.join(traceback.format_exception(*ei)))
@@ -331,6 +344,24 @@ class Turn:
     def crash(self, exn):
         self._enqueue(self._facet.actor.root, lambda turn: self._facet.actor._terminate(turn, exn))
 
+    def field(self, initial_value=None, name=None):
+        return Field(self._facet.actor.dataflow_graph, initial_value, name)
+
+    # can also be used as a decorator
+    def dataflow(self, a):
+        f = self._facet
+        f.prevent_inert_check()
+        def subject(turn):
+            if not f.alive: return
+            with ActiveFacet(turn, f):
+                a(turn)
+        f.on_stop(lambda turn: f.actor.dataflow_graph.forget_subject(subject))
+        f.actor.dataflow_graph.with_subject(subject, lambda: subject(self))
+
+    def publish_dataflow(self, assertion_function):
+        endpoint = DataflowPublication(assertion_function)
+        self.dataflow(lambda turn: endpoint.update(turn))
+
     def publish(self, ref, assertion):
         handle = next(_next_handle)
         self._publish(ref, assertion, handle)
@@ -356,7 +387,10 @@ class Turn:
                 self._retract(e)
 
     def replace(self, ref, handle, assertion):
-        new_handle = None if assertion is None else self.publish(ref, assertion)
+        if assertion is None or ref is None:
+            new_handle = None
+        else:
+            new_handle = self.publish(ref, assertion)
         self.retract(handle)
         return new_handle
 
@@ -420,6 +454,20 @@ def stop_if_inert_after(action):
                 turn.stop()
         turn._enqueue(turn._facet, check_action)
     return wrapped_action
+
+class DataflowPublication:
+    def __init__(self, assertion_function):
+        self.assertion_function = assertion_function
+        self.handle = None
+        self.target = None
+        self.assertion = None
+
+    def update(self, turn):
+        (next_target, next_assertion) = self.assertion_function(turn) or (None, None)
+        if next_target != self.target or next_assertion != self.assertion_function:
+            self.target = next_target
+            self.assertion = next_assertion
+            self.handle = turn.replace(self.target, self.handle, self.assertion)
 
 class Ref:
     def __init__(self, facet, entity):
