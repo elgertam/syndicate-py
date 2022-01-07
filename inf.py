@@ -1,4 +1,4 @@
-from syndicate import relay, Turn
+from syndicate import relay, turn
 from syndicate.during import During
 import logging
 
@@ -6,4 +6,4 @@ import logging
 @During().add_handler
 def main(args):
     logging.info(f'in main {args}')
-    Turn.active.on_stop(lambda: logging.info(f'args retracted {args}'))
+    turn.on_stop(lambda: logging.info(f'args retracted {args}'))
