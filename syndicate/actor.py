@@ -333,12 +333,9 @@ class Turn:
     def stop(self, facet = None, continuation = None):
         if facet is None:
             facet = self._facet
-        if facet.parent is None:
-            self.stop_actor()
-        else:
-            if continuation is not None:
-                facet.on_stop(continuation)
-            facet._terminate(True)
+        if continuation is not None:
+            facet.on_stop(continuation)
+        facet._terminate(True)
 
     # can also be used as a decorator
     def on_stop(self, a):
