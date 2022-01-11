@@ -550,4 +550,8 @@ def __boot_inert():
     _inert_ref = Turn.active.ref(_inert_entity)
 async def __run_inert():
     Actor(__boot_inert, name = '_inert_actor')
-asyncio.get_event_loop().run_until_complete(__run_inert())
+def __setup_inert():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(__run_inert())
+    loop.close()
+__setup_inert()
