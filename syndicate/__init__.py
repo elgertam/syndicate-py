@@ -12,11 +12,14 @@ def __setup():
     class turn:
         @staticproperty
         def active():
-            return _active.turn
+            t = getattr(_active, 'turn', False)
+            if t is False:
+                t = _active.turn = None
+            return t
 
         @staticproperty
         def log():
-            return _active.turn.log
+            return turn.active.log
 
         def run(facet, action):
             Turn.run(facet, action)
@@ -25,11 +28,11 @@ def __setup():
             Turn.external(facet, action, loop=loop)
 
         def active_facet():
-            return _active.turn._facet
+            return turn.active._facet
 
     def install_definition(name, definition):
         def handler(*args, **kwargs):
-            return definition(_active.turn, *args, **kwargs)
+            return definition(turn.active, *args, **kwargs)
         setattr(turn, name, handler)
 
     for (name, definition) in Turn.__dict__.items():

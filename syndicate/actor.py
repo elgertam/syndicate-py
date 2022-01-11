@@ -284,7 +284,10 @@ def queue_task_threadsafe(thunk, loop = None):
 class Turn:
     @staticproperty
     def active():
-        return _active.turn
+        t = getattr(_active, 'turn', False)
+        if t is False:
+            t = _active.turn = None
+        return t
 
     @classmethod
     def run(cls, facet, action, zombie_turn = False):
@@ -551,7 +554,11 @@ def __boot_inert():
 async def __run_inert():
     Actor(__boot_inert, name = '_inert_actor')
 def __setup_inert():
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(__run_inert())
-    loop.close()
+    def setup_main():
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(__run_inert())
+        loop.close()
+    t = threading.Thread(target=setup_main)
+    t.start()
+    t.join()
 __setup_inert()
