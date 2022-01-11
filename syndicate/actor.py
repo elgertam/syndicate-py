@@ -174,6 +174,15 @@ class Facet:
     def cancel_on_stop(self, a):
         remove_noerror(self.shutdown_actions, a)
 
+    def on_stop_or_crash(self, a):
+        def cleanup():
+            self.cancel_on_stop(cleanup)
+            self.actor.cancel_at_exit(cleanup)
+            a()
+        self.on_stop(cleanup)
+        self.actor.at_exit(cleanup)
+        return cleanup
+
     def isinert(self):
         return \
             len(self.children) == 0 and \
@@ -193,14 +202,13 @@ class Facet:
 
     def linked_task(self, coro_fn, loop = None):
         task = None
+        @self.on_stop_or_crash
         def cancel_linked_task():
             nonlocal task
             if task is not None:
                 remove_noerror(self.linked_tasks, task)
                 task.cancel()
                 task = None
-                self.cancel_on_stop(cancel_linked_task)
-                self.actor.cancel_at_exit(cancel_linked_task)
         async def guarded_task():
             try:
                 await coro_fn(self)
@@ -208,8 +216,6 @@ class Facet:
                 Turn.external(self, cancel_linked_task)
         task = find_loop(loop).create_task(guarded_task())
         self.linked_tasks.append(task)
-        self.on_stop(cancel_linked_task)
-        self.actor.at_exit(cancel_linked_task)
 
     def _terminate(self, orderly):
         if not self.alive: return
@@ -340,6 +346,10 @@ class Turn:
     # can also be used as a decorator
     def on_stop(self, a):
         self._facet.on_stop(a)
+
+    # can also be used as a decorator
+    def on_stop_or_crash(self, a):
+        self._facet.on_stop_or_crash(a)
 
     def spawn(self, boot_proc, name = None, initial_handles = None, daemon = False):
         def action():
