@@ -451,6 +451,15 @@ class Turn:
             ref.entity.on_message(message)
         self._enqueue(ref.facet, action)
 
+    # decorator
+    def after(self, delay_seconds):
+        def decorate(action):
+            @self.linked_task()
+            async def task(facet):
+                await asyncio.sleep(delay_seconds)
+                Turn.external(facet, action)
+        return decorate
+
     def _enqueue(self, target_facet, action):
         target_actor = target_facet.actor
         if target_actor not in self.queues:
