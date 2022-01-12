@@ -22,10 +22,10 @@ def __setup():
             return turn.active.log
 
         def run(facet, action):
-            Turn.run(facet, action)
+            return Turn.run(facet, action)
 
         def external(facet, action, loop=None):
-            Turn.external(facet, action, loop=loop)
+            return Turn.external(facet, action, loop=loop)
 
         def active_facet():
             return turn.active._facet
