@@ -15,25 +15,38 @@ class unquote:
     def __init__(self, pattern):
         self.pattern = pattern
 
+uCAPTURE = unquote(CAPTURE)
+u_ = unquote(_)
+
+# Given
+#
+#   Run = <run @name string @input any @output any>
+#
+# then these all produce the same pattern:
+#
+# P.rec('Observe', P.quote(P.rec('run', P.lit('N'), P.unquote(P.CAPTURE), P.bind(P.unquote(P._)))), P._)
+#
+# P.rec('Observe', P.quote(P.quote(Run('N', P.unquote(P.uCAPTURE), P.unquote(P.bind(P.u_))))), P._)
+#
+# P.quote(Record(Symbol('Observe'),
+#                [P.quote(Run('N', P.unquote(P.uCAPTURE), P.unquote(P.bind(P.u_)))),
+#                 P.u_]))
+
 # Simple, stupid single-level quasiquotation.
 def quote(p):
     if isinstance(p, unquote):
         return p.pattern
-    if p.VARIANT == P.Pattern.DDiscard.VARIANT:
-        return lit(preserve(p))
-    if p.VARIANT == P.Pattern.DBind.VARIANT:
-        return rec('bind', quote(p.value.pattern))
-    if p.VARIANT == P.Pattern.DLit.VARIANT:
-        return lit(preserve(p))
-    if p.VARIANT == P.Pattern.DCompound.VARIANT:
-        p = p.value
-        if p.VARIANT == P.DCompound.rec.VARIANT:
-            return rec('rec', lit(p.label), arr(*map(quote, p.fields)))
-        if p.VARIANT == P.DCompound.arr.VARIANT:
-            return rec('arr', arr(*map(quote, p.items)))
-        if p.VARIANT == P.DCompound.dict.VARIANT:
-            return rec('dict', dict(*map(lambda kv: (kv[0], quote(kv[1])), p.entries.items())))
-    raise Exception(f'Unhandled case in quote: {repr(p)}')
+    p = preserve(p)
+    if isinstance(p, list) or isinstance(p, tuple):
+        return arr(*map(quote, p))
+    elif isinstance(p, set) or isinstance(p, frozenset):
+        raise Exception('Cannot represent literal set in dataspace pattern')
+    elif isinstance(p, _dict):
+        return dict(*((k, quote(pp)) for (k, pp) in p.items()))
+    elif isinstance(p, Record):
+        return _rec(p.key, *map(quote, p.fields))
+    else:
+        return P.Pattern.DLit(P.DLit(P.AnyAtom.decode(p)))
 
 def lit(v):
     if isinstance(v, list) or isinstance(v, tuple):
