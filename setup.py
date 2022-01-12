@@ -5,7 +5,7 @@ except ImportError:
 
 setup(
     name="syndicate-py",
-    version="0.8.1",
+    version="0.8.2",
     author="Tony Garnock-Jones",
     author_email="tonyg@leastfixedpoint.com",
     license="GNU General Public License v3 or later (GPLv3+)",
