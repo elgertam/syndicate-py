@@ -190,6 +190,7 @@ class TunnelRelay:
         variant = packet.VARIANT.name
         if variant == 'Turn': self._handle_turn_events(packet.value.value)
         elif variant == 'Error': self._on_error(packet.value.message, packet.value.detail)
+        elif variant == 'Extension': pass
 
     def _on_error(self, message, detail):
         self.facet.log.error('Error from server: %r (detail: %r)', message, detail)
