@@ -21,3 +21,6 @@ pull-protocols:
 		-m 'Merge latest changes from the syndicate-protocols repository' \
 		git@git.syndicate-lang.org:syndicate-lang/syndicate-protocols \
 		main
+
+chat.bin: chat.prs
+	preserves-schemac .:chat.prs > $@

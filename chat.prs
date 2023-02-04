@@ -1,0 +1,4 @@
+version 1 .
+
+Present = <Present @username string>.
+Says = <Says @who string @what string>.

@@ -4,7 +4,11 @@ import asyncio
 import random
 import syndicate
 from syndicate import patterns as P, actor, dataspace, turn
-from syndicate.schema import simpleChatProtocol, sturdy
+
+from syndicate.schema import sturdy
+
+from preserves.schema import load_schema_file
+simpleChatProtocol = load_schema_file('./chat.bin').chat
 
 parser = argparse.ArgumentParser(description='Simple dataspace-server-mediated text chat.',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
