@@ -17,7 +17,7 @@ parser.add_argument('--address', metavar='\'<tcp "HOST" PORT>\'',
                     default='<ws "ws://localhost:9001/">')
 parser.add_argument('--cap', metavar='\'<ref ...>\'',
                     help='capability for the dataspace on the server',
-                    default='<ref "syndicate" [] #[pkgN9TBmEd3Q04grVG4Zdw==]>')
+                    default='<ref "syndicate" [] #[acowDB2/oI+6aSEC3YIxGg==]>')
 args = parser.parse_args()
 
 Present = simpleChatProtocol.Present

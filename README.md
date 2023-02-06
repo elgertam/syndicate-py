@@ -19,10 +19,10 @@ Start a Syndicate broker (such as
 
 Find the line of broker output giving the root capability:
 
-    ... rootcap=<ref "syndicate" [] #x"a6480df5306611ddd0d3882b546e1977"> ...
+    ... rootcap=<ref "syndicate" [] #x"69ca300c1dbfa08fba692102dd82311a"> ...
 
 Then, run [chat.py](chat.py) several times in several separate windows:
 
     python chat.py \
         --address '<tcp "localhost" 8001>' \
-        --cap '<ref "syndicate" [] #x"a6480df5306611ddd0d3882b546e1977">'
+        --cap '<ref "syndicate" [] #x"69ca300c1dbfa08fba692102dd82311a">'
