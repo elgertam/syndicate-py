@@ -6,6 +6,9 @@ clean:
 	rm -f .coverage
 	rm -rf *.egg-info build dist
 
+tag:
+	git tag v`python3 setup.py --version`
+
 # sudo apt install python3-wheel twine
 publish: build
 	twine upload dist/*
