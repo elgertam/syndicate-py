@@ -1,19 +1,43 @@
 version 1 .
 embeddedType EntityRef.Cap .
 
+;---------------------------------------------------------------------------
+; Binding and connection
+
+SturdyStepType = =ref .
+
+; In a gatekeeper.Step or gatekeeper.PathStep, use Parameters as detail.
+SturdyStepDetail = Parameters .
+SturdyPathStepDetail = Parameters .
+
+; In a gatekeeper.Description, use the following detail.
+SturdyDescriptionDetail = {
+  oid: any,
+  key: bytes,
+} .
+
+;---------------------------------------------------------------------------
+; Macaroons
+
 ; The sequence of Caveats is run RIGHT-TO-LEFT.
 ; That is, the newest Caveats are at the right.
 ;
-; Let f = HMAC-BLAKE2s, e = canonical machine-oriented serialization of some preserves value,
-; and k = the original secret key for the ref.
+; Let f(k,d) = HMAC-BLAKE2s-256(k,d)[0..16),
+;     e = canonical machine-oriented serialization of some preserves value, and
+;     k = the original secret key for the ref.
 ;
-; The `sig` is then f(f(f(f(k, e(oid)), ...), Caveat), ...).
+; The `sig` is then f(f(f(f(k, e(oid)), ...), e(Caveat)), ...).
 ;
-SturdyRef = <ref @oid any @caveatChain [Caveat ...] @sig bytes>.
+SturdyRef = <ref @parameters Parameters> .
+Parameters = {
+  oid: any,
+  sig: bytes,
+} & @caveats CaveatsField .
+CaveatsField = @present { caveats: [Caveat ...] } / @invalid { caveats: any } / @absent {} .
 
 ; embodies 1st-party caveats over assertion structure, but nothing else
 ; can add 3rd-party caveats and richer predicates later
-Caveat = Rewrite / Alts / Reject /@unknown any .
+Caveat = Rewrite / Alts / Reject / @unknown any .
 Rewrite = <rewrite @pattern Pattern @template Template> .
 Reject = <reject @pattern Pattern> .
 Alts = <or @alternatives [Rewrite ...]>.
