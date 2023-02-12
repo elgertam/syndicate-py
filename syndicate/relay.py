@@ -1,7 +1,6 @@
 import sys
 import asyncio
 import websockets
-import logging
 
 from preserves import Embedded, stringify
 from preserves.fold import map_embeddeds
@@ -83,7 +82,7 @@ class TunnelRelay:
         self.publish_oid = publish_oid
         self._reset()
         self.facet.linked_task(
-            lambda facet: self._reconnecting_main(asyncio.get_running_loop(),
+            lambda facet: self._reconnecting_main(facet.actor._system,
                                                   on_connected = on_connected,
                                                   on_disconnected = on_disconnected))
 
@@ -187,6 +186,7 @@ class TunnelRelay:
 
     def _handle_event(self, v):
         packet = protocol.Packet.decode(v)
+        # self.facet.log.info('IN: %r', packet)
         variant = packet.VARIANT.name
         if variant == 'Turn': self._handle_turn_events(packet.value.value)
         elif variant == 'Error': self._on_error(packet.value.message, packet.value.detail)
@@ -244,8 +244,9 @@ class TunnelRelay:
             def flush_pending():
                 packet = protocol.Packet.Turn(protocol.Turn(self.pending_turn))
                 self.pending_turn = []
+                # self.facet.log.info('OUT: %r', packet)
                 self._send_bytes(encode(packet))
-            actor.queue_task(lambda: turn.run(self.facet, flush_pending))
+            self.facet.actor._system.queue_task(lambda: turn.run(self.facet, flush_pending))
         self.pending_turn.append(protocol.TurnEvent(protocol.Oid(remote_oid), turn_event))
 
     def _send_bytes(self, bs):
@@ -254,10 +255,10 @@ class TunnelRelay:
     def _disconnect(self):
         raise Exception('subclassresponsibility')
 
-    async def _reconnecting_main(self, loop, on_connected=None, on_disconnected=None):
+    async def _reconnecting_main(self, system, on_connected=None, on_disconnected=None):
         should_run = True
         while should_run and self.facet.alive:
-            did_connect = await self.main(loop, on_connected=(on_connected or _default_on_connected))
+            did_connect = await self.main(system, on_connected=(on_connected or _default_on_connected))
             should_run = await (on_disconnected or _default_on_disconnected)(self, did_connect)
 
     @staticmethod
@@ -362,17 +363,17 @@ class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
                     pass
             self.stop_signal.get_loop().call_soon_threadsafe(set_stop_signal)
 
-    async def _create_connection(self, loop):
+    async def _create_connection(self, system):
         raise Exception('subclassresponsibility')
 
-    async def main(self, loop, on_connected=None):
+    async def main(self, system, on_connected=None):
         if self.transport is not None:
             raise Exception('Cannot run connection twice!')
 
         self.decoder = Decoder(decode_embedded = sturdy.WireRef.decode)
-        self.stop_signal = loop.create_future()
+        self.stop_signal = system.loop.create_future()
         try:
-            _transport, _protocol = await self._create_connection(loop)
+            _transport, _protocol = await self._create_connection(system)
         except OSError as e:
             log.error('%s: Could not connect to server: %s' % (self.__class__.__qualname__, e))
             return False
@@ -389,44 +390,44 @@ class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
 
 @transport.address(transportAddress.Tcp)
 class TcpTunnelRelay(_StreamTunnelRelay):
-    async def _create_connection(self, loop):
-        return await loop.create_connection(lambda: self, self.address.host, self.address.port)
+    async def _create_connection(self, system):
+        return await system.loop.create_connection(lambda: self, self.address.host, self.address.port)
 
 @transport.address(transportAddress.Unix)
 class UnixSocketTunnelRelay(_StreamTunnelRelay):
-    async def _create_connection(self, loop):
-        return await loop.create_unix_connection(lambda: self, self.address.path)
+    async def _create_connection(self, system):
+        return await system.loop.create_unix_connection(lambda: self, self.address.path)
 
 @transport.address(transportAddress.WebSocket)
 class WebsocketTunnelRelay(TunnelRelay):
     def __init__(self, address, **kwargs):
         super().__init__(address, **kwargs)
-        self.loop = None
+        self.system = None
         self.ws = None
 
     def _send_bytes(self, bs):
-        if self.loop:
+        if self.system:
             def _do_send():
                 if self.ws:
-                    self.loop.create_task(self.ws.send(bs))
-            self.loop.call_soon_threadsafe(_do_send)
+                    self.system.queue_task(lambda: self.ws.send(bs))
+            self.system.loop.call_soon_threadsafe(_do_send)
 
     def _disconnect(self):
-        if self.loop:
+        if self.system:
             def _do_disconnect():
                 if self.ws:
-                    self.loop.create_task(self.ws.close())
-            self.loop.call_soon_threadsafe(_do_disconnect)
+                    self.system.queue_task(lambda: self.ws.close())
+            self.system.loop.call_soon_threadsafe(_do_disconnect)
 
     def __connection_error(self, e):
         self.facet.log.error('Could not connect to server: %s' % (e,))
         return False
 
-    async def main(self, loop, on_connected=None):
+    async def main(self, system, on_connected=None):
         if self.ws is not None:
             raise Exception('Cannot run connection twice!')
 
-        self.loop = loop
+        self.system = system
 
         try:
             self.ws = await websockets.connect(self.address.url)
@@ -448,7 +449,7 @@ class WebsocketTunnelRelay(TunnelRelay):
 
         if self.ws:
             await self.ws.close()
-        self.loop = None
+        self.system = None
         self.ws = None
         return True
 
@@ -460,8 +461,8 @@ class PipeTunnelRelay(_StreamTunnelRelay):
         self.output_fileobj = output_fileobj
         self.reader = asyncio.StreamReader()
 
-    async def _create_connection(self, loop):
-        return await loop.connect_read_pipe(lambda: self, self.input_fileobj)
+    async def _create_connection(self, system):
+        return await system.loop.connect_read_pipe(lambda: self, self.input_fileobj)
 
     def _send_bytes(self, bs):
         self.output_fileobj.buffer.write(bs)

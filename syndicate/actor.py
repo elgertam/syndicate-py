@@ -22,29 +22,52 @@ _active.turn = None
 
 # decorator
 def run_system(**kwargs):
-    return lambda boot_proc: start_actor_system(boot_proc, **kwargs)
+    return lambda boot_proc: System().run(boot_proc, **kwargs)
 
-def start_actor_system(boot_proc, debug = False, name = None, configure_logging = True):
-    if configure_logging:
-        logging.basicConfig(level = logging.DEBUG if debug else logging.INFO)
-    loop = asyncio.get_event_loop()
-    if debug:
-        loop.set_debug(True)
-    queue_task(lambda: Actor(boot_proc, name = name), loop = loop)
-    loop.run_forever()
-    while asyncio.all_tasks(loop):
-        loop.stop()
-        loop.run_forever()
-    loop.close()
+class System:
+    def __init__(self, loop = None):
+        self.tasks = set()
+        self.loop = loop or asyncio.get_event_loop()
+        self.inhabitant_count = 0
 
-def adjust_engine_inhabitant_count(delta):
-    loop = asyncio.get_running_loop()
-    if not hasattr(loop, '__syndicate_inhabitant_count'):
-        loop.__syndicate_inhabitant_count = 0
-    loop.__syndicate_inhabitant_count = loop.__syndicate_inhabitant_count + delta
-    if loop.__syndicate_inhabitant_count == 0:
-        log.debug('Inhabitant count reached zero')
-        loop.stop()
+    def run(self, boot_proc, debug = False, name = None, configure_logging = True):
+        if configure_logging:
+            logging.basicConfig(level = logging.DEBUG if debug else logging.INFO)
+        if debug:
+            self.loop.set_debug(True)
+        self.queue_task(lambda: Actor(boot_proc, system = self, name = name))
+        self.loop.run_forever()
+        while asyncio.all_tasks(self.loop):
+            self.loop.stop()
+            self.loop.run_forever()
+        self.loop.close()
+
+    def adjust_engine_inhabitant_count(self, delta):
+        self.inhabitant_count = self.inhabitant_count + delta
+        if self.inhabitant_count == 0:
+            log.debug('Inhabitant count reached zero')
+            self.loop.stop()
+
+    def queue_task(self, thunk):
+        async def task():
+            try:
+                await ensure_awaitable(thunk())
+            finally:
+                self.tasks.remove(t)
+        t = self.loop.create_task(task())
+        self.tasks.add(t)
+        return t
+
+    def queue_task_threadsafe(self, thunk):
+        async def task():
+            await ensure_awaitable(thunk())
+        return asyncio.run_coroutine_threadsafe(task(), self.loop)
+
+async def ensure_awaitable(value):
+    if inspect.isawaitable(value):
+        return await value
+    else:
+        return value
 
 def remove_noerror(collection, item):
     try:
@@ -53,11 +76,12 @@ def remove_noerror(collection, item):
         pass
 
 class Actor:
-    def __init__(self, boot_proc, name = None, initial_assertions = {}, daemon = False):
+    def __init__(self, boot_proc, system, name = None, initial_assertions = {}, daemon = False):
         self.name = name or 'a' + str(next(_next_actor_number))
+        self._system = system
         self._daemon = daemon
         if not daemon:
-            adjust_engine_inhabitant_count(1)
+            system.adjust_engine_inhabitant_count(1)
         self.root = Facet(self, None)
         self.outbound = initial_assertions or {}
         self.exit_reason = None  # None -> running, True -> terminated OK, exn -> error
@@ -77,7 +101,7 @@ class Actor:
     def daemon(self, value):
         if self._daemon != value:
             self._daemon = value
-            adjust_engine_inhabitant_count(-1 if value else 1)
+            self._system.adjust_engine_inhabitant_count(-1 if value else 1)
 
     @property
     def alive(self):
@@ -115,7 +139,7 @@ class Actor:
             h()
         self.root._terminate(exit_reason == True)
         if not self._daemon:
-            adjust_engine_inhabitant_count(-1)
+            self._system.adjust_engine_inhabitant_count(-1)
 
     def _pop_outbound(self, handle, clear_from_source_facet):
         e = self.outbound.pop(handle)
@@ -214,7 +238,7 @@ class Facet:
                 await coro_fn(self)
             finally:
                 Turn.external(self, cancel_linked_task)
-        task = find_loop(loop).create_task(guarded_task())
+        task = self.actor._system.loop.create_task(guarded_task())
         self.linked_tasks.append(task)
 
     def _terminate(self, orderly):
@@ -262,24 +286,8 @@ class ActiveFacet:
         self.turn._facet = self.outer_facet
         self.outer_facet = None
 
-async def ensure_awaitable(value):
-    if inspect.isawaitable(value):
-        return await value
-    else:
-        return value
-
 def find_loop(loop = None):
     return asyncio.get_running_loop() if loop is None else loop
-
-def queue_task(thunk, loop = None):
-    async def task():
-        await ensure_awaitable(thunk())
-    return find_loop(loop).create_task(task())
-
-def queue_task_threadsafe(thunk, loop = None):
-    async def task():
-        await ensure_awaitable(thunk())
-    return asyncio.run_coroutine_threadsafe(task(), find_loop(loop))
 
 class Turn:
     @staticproperty
@@ -312,10 +320,11 @@ class Turn:
 
     @classmethod
     def external(cls, facet, action, loop = None):
-        return queue_task_threadsafe(lambda: cls.run(facet, action), loop)
+        return facet.actor._system.queue_task_threadsafe(lambda: cls.run(facet, action))
 
     def __init__(self, facet):
         self._facet = facet
+        self._system = facet.actor._system
         self.queues = {}
 
     @property
@@ -361,10 +370,11 @@ class Turn:
                 for handle in initial_handles:
                     new_outbound[handle] = \
                         self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
-            queue_task(lambda: Actor(boot_proc,
-                                     name = name,
-                                     initial_assertions = new_outbound,
-                                     daemon = daemon))
+            self._system.queue_task(lambda: Actor(boot_proc,
+                                                  system = self._system,
+                                                  name = name,
+                                                  initial_assertions = new_outbound,
+                                                  daemon = daemon))
         self._enqueue(self._facet, action)
 
     def stop_actor(self):
@@ -481,7 +491,7 @@ class Turn:
                         action()
                     turn._facet = saved_facet
                 return lambda: Turn.run(actor.root, deliver_q)
-            queue_task(make_deliver_q(actor, q))
+            self._system.queue_task(make_deliver_q(actor, q))
         self.queues = {}
 
 def stop_if_inert_after(action):
@@ -552,7 +562,7 @@ def __boot_inert():
     _inert_facet = Turn.active._facet
     _inert_ref = Turn.active.ref(_inert_entity)
 async def __run_inert():
-    Actor(__boot_inert, name = '_inert_actor')
+    Actor(__boot_inert, system = System(), name = '_inert_actor')
 def __setup_inert():
     def setup_main():
         loop = asyncio.new_event_loop()
