@@ -36,7 +36,10 @@ class System:
         if debug:
             self.loop.set_debug(True)
         self.queue_task(lambda: Actor(boot_proc, system = self, name = name))
-        self.loop.run_forever()
+        try:
+            self.loop.run_forever()
+        except:
+            traceback.print_exc()
         while asyncio.all_tasks(self.loop):
             self.loop.stop()
             self.loop.run_forever()
@@ -224,8 +227,21 @@ class Facet:
             self.inert_check_preventers = self.inert_check_preventers - 1
         return disarm
 
-    def linked_task(self, coro_fn, loop = None):
+    @property
+    def loop(self):
+        return self.actor._system.loop
+
+    def linked_task(self, coro_fn, run_in_executor=False):
         task = None
+        if run_in_executor:
+            inner_coro_fn = coro_fn
+            async def outer_coro_fn(facet):
+                try:
+                    await self.loop.run_in_executor(None, lambda: inner_coro_fn(facet))
+                except:
+                    import traceback
+                    traceback.print_exc()
+            coro_fn = outer_coro_fn
         @self.on_stop_or_crash
         def cancel_linked_task():
             nonlocal task
@@ -238,7 +254,7 @@ class Facet:
                 await coro_fn(self)
             finally:
                 Turn.external(self, cancel_linked_task)
-        task = self.actor._system.loop.create_task(guarded_task())
+        task = self.loop.create_task(guarded_task())
         self.linked_tasks.append(task)
 
     def _terminate(self, orderly):
@@ -345,8 +361,8 @@ class Turn:
         return self._facet.prevent_inert_check()
 
     # decorator
-    def linked_task(self, loop = None):
-        return lambda coro_fn: self._facet.linked_task(coro_fn, loop = loop)
+    def linked_task(self, **kwargs):
+        return lambda coro_fn: self._facet.linked_task(coro_fn, **kwargs)
 
     def stop(self, facet = None, continuation = None):
         if facet is None:

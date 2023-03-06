@@ -473,5 +473,4 @@ def run_stdio_service(entity):
 
 # decorator
 def service(**kwargs):
-    return lambda entity: \
-        actor.start_actor_system(lambda: run_stdio_service(entity), **kwargs)
+    return lambda entity: actor.run_system(**kwargs)(lambda: run_stdio_service(entity))

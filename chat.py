@@ -45,7 +45,7 @@ def main():
         @turn.linked_task()
         async def accept_input(f):
             reader = asyncio.StreamReader()
-            await actor.find_loop().connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
+            await f.loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
             while line := (await reader.readline()).decode('utf-8'):
                 turn.external(f, lambda: turn.send(ds, Says(me, line.strip())))
             turn.external(f, lambda: turn.stop(root_facet))
