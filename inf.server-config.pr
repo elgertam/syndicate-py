@@ -1,0 +1,9 @@
+<require-service <daemon inf>>
+<daemon inf {
+  argv: "python inf.py"
+  protocol: application/syndicate
+}>
+? <service-object <daemon inf> ?cap> [
+  $cap += =here-is-your-configuration!
+  $cap += =here-is-another-configuration!
+]
