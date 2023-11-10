@@ -26,7 +26,6 @@ def run_system(**kwargs):
 
 class System:
     def __init__(self, loop = None):
-        self.tasks = set()
         self.loop = loop or asyncio.get_event_loop()
         self.inhabitant_count = 0
 
@@ -53,18 +52,13 @@ class System:
 
     def queue_task(self, thunk):
         async def task():
-            try:
-                await ensure_awaitable(thunk())
-            finally:
-                self.tasks.remove(t)
-        t = self.loop.create_task(task())
-        self.tasks.add(t)
-        return t
+            await ensure_awaitable(thunk())
+        return self.loop.create_task(task())
 
     def queue_task_threadsafe(self, thunk):
         async def task():
             await ensure_awaitable(thunk())
-        return asyncio.run_coroutine_threadsafe(task(), self.loop)
+        return self.loop.call_soon_threadsafe(lambda: asyncio.run_coroutine_threadsafe(task(), self.loop))
 
 async def ensure_awaitable(value):
     if inspect.isawaitable(value):
