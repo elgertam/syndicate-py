@@ -41,10 +41,13 @@ class Graph:
 
             repaired_this_round = repaired_this_round | workset
 
+            updated_subjects = set()
             for object_id in workset:
                 for subject_id in self.observers_of(object_id):
-                    self.forget_subject(subject_id)
-                    self.with_subject(subject_id, lambda: repair_fn(subject_id))
+                    if subject_id not in updated_subjects:
+                        updated_subjects.add(subject_id)
+                        self.forget_subject(subject_id)
+                        self.with_subject(subject_id, lambda: repair_fn(subject_id))
 
 __nextFieldId = 0
 
