@@ -44,13 +44,13 @@ args = parser.parse_args()
 #
 # Here's a trace from a live session of this running against syndicate-rs:
 #
-#     B --> server: [[1, <assert <Boot #!⌜141/402:00007f3e50021ef0⌝> 3>]]
+#     B --> server: [[1, <assert <Boot #:⌜141/402:00007f3e50021ef0⌝> 3>]]
 #
-#     A --> server: [[1, <assert <Observe <rec Boot [<bind <_>>]> #!⌜151/422:00007f3e50025090⌝> 3>]]
-#     A <-- server: [[1, <assert [#!⌜141/402:00007f3e50021ef0⌝] 633>]]
-#     A --> server: [[2, <assert <One #!⌜151/422:00007f3e5c009b00⌝> 5>]]
+#     A --> server: [[1, <assert <Observe <rec Boot [<bind <_>>]> #:⌜151/422:00007f3e50025090⌝> 3>]]
+#     A <-- server: [[1, <assert [#:⌜141/402:00007f3e50021ef0⌝] 633>]]
+#     A --> server: [[2, <assert <One #:⌜151/422:00007f3e5c009b00⌝> 5>]]
 #
-#     B <-- server: [[1, <assert <One #!⌜151/422:00007f3e5c009b00⌝> 643>]]
+#     B <-- server: [[1, <assert <One #:⌜151/422:00007f3e5c009b00⌝> 643>]]
 #     B --> server: [[1, <retract 3>], [2, <assert <Two> 5>]]
 #
 #     A <-- server: [[2, <assert <Two> 653>]]
