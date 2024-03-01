@@ -1,3 +1,5 @@
+PACKAGEVERSION := $(shell python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+
 all:
 
 clean:
@@ -7,17 +9,18 @@ clean:
 	rm -rf *.egg-info build dist
 
 tag:
-	git tag v`python3 setup.py --version`
+	git tag v$(PACKAGEVERSION)
 
-# sudo apt install python3-wheel twine
-publish: build
+publish: clean build
 	twine upload dist/*
 
-build: clean
-	python3 setup.py sdist bdist_wheel
+build: dist/syndicate-py-$(PACKAGEVERSION).tar.gz
+
+dist/syndicate-py-$(PACKAGEVERSION).tar.gz:
+	python3 -m build
 
 veryclean: clean
-	rm -rf pyenv
+	rm -rf .venv
 
 PROTOCOLS_BRANCH=main
 pull-protocols:

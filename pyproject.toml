@@ -1,0 +1,44 @@
+[project]
+name = "syndicate-py"
+version = "0.16.0"
+description = "Syndicated Actor model and Syndicate network protocol for Python 3"
+readme = "README.md"
+requires-python = ">=3.6, <4"
+license = {text = "GPL-3.0-or-later"}
+
+authors = [
+    {name = "Tony Garnock-Jones", email = "tonyg@leastfixedpoint.com"},
+]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Programming Language :: Python :: 3",
+]
+
+dependencies = [
+    "websockets",
+    "preserves",
+]
+
+[project.urls]
+Homepage = "https://git.syndicate-lang.org/syndicate-lang/syndicate-py"
+Issues = "https://git.syndicate-lang.org/syndicate-lang/syndicate-py/issues"
+
+[project.optional-dependencies]
+dev = [
+    "build",
+    "twine",
+]
+
+[tool.setuptools]
+packages = ["syndicate"]
+
+[tool.setuptools.package-data]
+syndicate_py = ["*"]
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
