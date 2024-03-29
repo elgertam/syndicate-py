@@ -8,9 +8,13 @@ or
 
     git clone https://git.syndicate-lang.org/syndicate-lang/syndicate-py
     cd syndicate-py
-    virtualenv -p python3 pyenv
-    . pyenv/bin/activate
-    pip install -r requirements.txt
+    python -m venv .venv
+    . .venv/bin/activate
+    pip install -e '.[dev]'
+
+See also
+[syndicate-py-packaging](https://git.syndicate-lang.org/syndicate-lang/syndicate-py-packaging)
+for Debian packaging scripts.
 
 ## Running
 
