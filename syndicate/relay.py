@@ -377,7 +377,7 @@ class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
         try:
             _transport, _protocol = await self._create_connection(system)
         except OSError as e:
-            log.error('%s: Could not connect to server: %s' % (self.__class__.__qualname__, e))
+            self.facet.log.error('%s: Could not connect to server: %s' % (self.__class__.__qualname__, e))
             return False
 
         try:
