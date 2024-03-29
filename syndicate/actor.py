@@ -230,11 +230,7 @@ class Facet:
         if run_in_executor:
             inner_coro_fn = coro_fn
             async def outer_coro_fn(facet):
-                try:
-                    await self.loop.run_in_executor(None, lambda: inner_coro_fn(facet))
-                except:
-                    import traceback
-                    traceback.print_exc()
+                await self.loop.run_in_executor(None, lambda: inner_coro_fn(facet))
             coro_fn = outer_coro_fn
         @self.on_stop_or_crash
         def cancel_linked_task():
@@ -246,6 +242,9 @@ class Facet:
         async def guarded_task():
             try:
                 await coro_fn(self)
+            except:
+                import traceback
+                traceback.print_exc()
             finally:
                 Turn.external(self, cancel_linked_task)
         task = self.loop.create_task(guarded_task())
