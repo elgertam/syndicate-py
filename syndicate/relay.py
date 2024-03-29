@@ -1,6 +1,5 @@
 import sys
 import asyncio
-import websockets
 
 from preserves import Embedded, stringify
 from preserves.fold import map_embeddeds
@@ -424,6 +423,8 @@ class WebsocketTunnelRelay(TunnelRelay):
         return False
 
     async def main(self, system, on_connected=None):
+        import websockets
+
         if self.ws is not None:
             raise Exception('Cannot run connection twice!')
 
