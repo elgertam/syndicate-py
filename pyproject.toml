@@ -18,8 +18,9 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
+# "websockets" isn't listed here, but if you want to use relay.WebsocketTunnelRelay,
+# you will need it.
 dependencies = [
-    "websockets",
     "preserves",
 ]
 
