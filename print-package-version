@@ -1,0 +1,5 @@
+#!/bin/sh
+cd "$(dirname "$0")"
+. ./.envrc
+exec python -c \
+     'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])'

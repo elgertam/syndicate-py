@@ -1,4 +1,4 @@
-PACKAGEVERSION := $(shell python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+PACKAGEVERSION := $(shell ./print-package-version)
 
 all:
 
@@ -14,7 +14,9 @@ tag:
 publish: clean build
 	twine upload dist/*
 
-build: dist/syndicate-py-$(PACKAGEVERSION).tar.gz
+build: build-only
+
+build-only: dist/syndicate-py-$(PACKAGEVERSION).tar.gz
 
 dist/syndicate-py-$(PACKAGEVERSION).tar.gz:
 	python3 -m build
