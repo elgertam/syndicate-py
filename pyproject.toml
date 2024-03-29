@@ -35,10 +35,15 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["syndicate"]
+packages = [
+    "syndicate",
+    "syndicate.protocols",
+    "syndicate.protocols.schemas",
+]
 
 [tool.setuptools.package-data]
-syndicate_py = ["*"]
+"syndicate.protocols" = ["*.bin"]
+"syndicate.protocols.schemas" = ["*.prs"]
 
 [build-system]
 requires = ["setuptools", "setuptools-scm"]
