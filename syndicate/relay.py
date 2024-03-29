@@ -265,11 +265,14 @@ class TunnelRelay:
         return transport.connection_from_str(conn_str, **kwargs)
 
 # decorator
-def connect(conn_str, cap, **kwargs):
+def connect(conn_str, cap = None, **kwargs):
     def prepare_resolution_handler(handler):
         @During().add_handler
         def handle_gatekeeper(gk):
-            gatekeeper.resolve(gk.embeddedValue, cap)(handler)
+            if cap is None:
+                handler(gk.embeddedValue)
+            else:
+                gatekeeper.resolve(gk.embeddedValue, cap)(handler)
         return transport.connection_from_str(
             conn_str,
             gatekeeper_peer = turn.ref(handle_gatekeeper),
