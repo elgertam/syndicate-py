@@ -57,12 +57,18 @@ class System:
 
     def queue_task(self, thunk):
         async def task():
-            await ensure_awaitable(thunk())
+            try:
+                await ensure_awaitable(thunk())
+            except asyncio.CancelledError:
+                pass
         return self.loop.create_task(task())
 
     def queue_task_threadsafe(self, thunk):
         async def task():
-            await ensure_awaitable(thunk())
+            try:
+                await ensure_awaitable(thunk())
+            except asyncio.CancelledError:
+                pass
         return self.loop.call_soon_threadsafe(lambda: asyncio.run_coroutine_threadsafe(task(), self.loop))
 
 async def ensure_awaitable(value):
@@ -247,6 +253,8 @@ class Facet:
         async def guarded_task():
             try:
                 await coro_fn(self)
+            except asyncio.CancelledError:
+                pass
             except:
                 import traceback
                 traceback.print_exc()
