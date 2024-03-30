@@ -46,6 +46,8 @@ class System:
     async def _run(self):
         try:
             await self.exit_signal.get()
+        except asyncio.CancelledError:
+            pass
         finally:
             log.debug('System._run main loop exit')
 
