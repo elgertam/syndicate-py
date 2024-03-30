@@ -29,6 +29,8 @@ def main():
 
     @syndicate.relay.connect(args.address, sturdy.SturdyRef.decode(syndicate.parse(args.cap)))
     def on_connected(ds):
+        turn.on_stop(lambda: turn.stop(root_facet))
+
         me = 'user_' + str(random.randint(10, 1000))
 
         turn.publish(ds, Present(me))
@@ -48,4 +50,3 @@ def main():
             await f.loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), sys.stdin)
             while line := (await reader.readline()).decode('utf-8'):
                 turn.external(f, lambda: turn.send(ds, Says(me, line.strip())))
-            turn.external(f, lambda: turn.stop(root_facet))

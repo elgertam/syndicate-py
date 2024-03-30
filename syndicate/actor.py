@@ -251,15 +251,20 @@ class Facet:
                 task.cancel()
                 task = None
         async def guarded_task():
+            should_terminate_facet = True
             try:
-                await coro_fn(self)
+                if await coro_fn(self) is True:
+                    should_terminate_facet = False
             except asyncio.CancelledError:
                 pass
             except:
                 import traceback
                 traceback.print_exc()
             finally:
-                Turn.external(self, cancel_linked_task)
+                if should_terminate_facet:
+                    Turn.external(self, lambda: Turn.active.stop())
+                else:
+                    Turn.external(self, cancel_linked_task)
         task = self.loop.create_task(guarded_task())
         self.linked_tasks.append(task)
 
