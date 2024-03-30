@@ -30,7 +30,7 @@ class System:
         self.inhabitant_count = 0
         self.exit_signal = asyncio.Queue()
 
-    def run(self, boot_proc, debug = False, name = None, configure_logging = True):
+    def run(self, boot_proc, debug = None, name = None, configure_logging = True):
         if configure_logging:
             logging.basicConfig(level = logging.DEBUG if debug else logging.INFO)
         if debug:
