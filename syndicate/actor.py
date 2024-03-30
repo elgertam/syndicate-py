@@ -28,6 +28,7 @@ class System:
     def __init__(self, loop = None):
         self.loop = loop or asyncio.get_event_loop()
         self.inhabitant_count = 0
+        self.exit_signal = asyncio.Queue()
 
     def run(self, boot_proc, debug = False, name = None, configure_logging = True):
         if configure_logging:
@@ -35,20 +36,24 @@ class System:
         if debug:
             self.loop.set_debug(True)
         self.queue_task(lambda: Actor(boot_proc, system = self, name = name))
+
+        # From Python 3.12, we may be able to use:
+        #   asyncio.run(self._run, debug=debug, loop_factory=lambda: self.loop)
+        # but until then:
+        with asyncio.Runner(debug=debug, loop_factory=lambda: self.loop) as r:
+            return r.run(self._run())
+
+    async def _run(self):
         try:
-            self.loop.run_forever()
-        except:
-            traceback.print_exc()
-        while asyncio.all_tasks(self.loop):
-            self.loop.stop()
-            self.loop.run_forever()
-        self.loop.close()
+            await self.exit_signal.get()
+        finally:
+            log.debug('System._run main loop exit')
 
     def adjust_engine_inhabitant_count(self, delta):
         self.inhabitant_count = self.inhabitant_count + delta
         if self.inhabitant_count == 0:
             log.debug('Inhabitant count reached zero')
-            self.loop.stop()
+            self.exit_signal.put_nowait(())
 
     def queue_task(self, thunk):
         async def task():
