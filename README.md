@@ -19,7 +19,7 @@ for Debian packaging scripts.
 ## Running
 
 Start a Syndicate broker (such as
-[this one](https://git.syndicate-lang.org/syndicate-rs)) in one window.
+[this one](https://git.syndicate-lang.org/syndicate-lang/syndicate-rs)) in one window.
 
 Find the line of broker output giving the root capability:
 
