@@ -1,0 +1,23 @@
+<require-service <daemon <client>>>
+<require-service <daemon <server>>>
+
+<daemon <client> {
+  argv: "exec python3 rpc-client.py"
+  protocol: application/syndicate
+}>
+
+<daemon <server> {
+  argv: "exec python3 rpc-server.py"
+  protocol: application/syndicate
+}>
+
+? <service-object <daemon <server>> ?server> [
+  ? <service-object <daemon <client>> ?client> [
+    ? <job ?n> [
+      $client += [$n, $server]
+    ]
+  ]
+]
+
+<job 10>
+<job 11>
