@@ -13,7 +13,11 @@ def fib(n):
 @During().add_handler
 def main(req):
     turn.log.info('Got request %r' % (req,))
-    turn.on_stop(lambda: turn.log.info('Request %r retracted' % (req,)))
+
+    # Alternative: turn.on_stop(lambda: turn.log.info('...'))
+    @turn.on_stop
+    def handle_retraction():
+        turn.log.info('Request %r retracted' % (req,))
 
     if FibRequest.isClassOf(req):
         result = fib(FibRequest._n(req))
