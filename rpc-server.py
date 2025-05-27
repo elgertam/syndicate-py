@@ -12,14 +12,15 @@ def fib(n):
 @relay.service(name='fib-server')
 @During().add_handler
 def main(req):
-    turn.log.info('Got request %r' % (req,))
-
     # Alternative: turn.on_stop(lambda: turn.log.info('...'))
     @turn.on_stop
     def handle_retraction():
         turn.log.info('Request %r retracted' % (req,))
 
     if FibRequest.isClassOf(req):
-        result = fib(FibRequest._n(req))
-        turn.log.info('Publishing reply %r to request %r' % (result, req))
+        n = FibRequest._n(req)
+        result = fib(n)
+        turn.log.info('Publishing reply %r to request %r' % (result, n))
         turn.publish(FibRequest._k(req).embeddedValue, result)
+    else:
+        turn.log.info('Got bad request %r' % (req,))
