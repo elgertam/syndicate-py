@@ -1,6 +1,6 @@
 [project]
 name = "syndicate-py"
-version = "0.19.2"
+version = "0.19.3"
 description = "Syndicated Actor model and Syndicate network protocol for Python 3"
 readme = "README.md"
 requires-python = ">=3.6, <4"
@@ -21,7 +21,7 @@ classifiers = [
 # "websockets" isn't listed here, but if you want to use relay.WebsocketTunnelRelay,
 # you will need it.
 dependencies = [
-    "preserves>=0.996.2",
+    "preserves>=0.996.3",
 ]
 
 [project.urls]
