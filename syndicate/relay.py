@@ -347,9 +347,8 @@ class _StreamTunnelRelay(TunnelRelay, asyncio.Protocol):
     def data_received(self, chunk):
         self.decoder.extend(chunk)
         while True:
-            v = self.decoder.try_next()
-            if v is None: break
-            self._on_event(v)
+            if not self.decoder.complete_value_available(): break
+            self._on_event(self.decoder.next())
 
     def _send_bytes(self, bs):
         if self.transport:

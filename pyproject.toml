@@ -21,7 +21,7 @@ classifiers = [
 # "websockets" isn't listed here, but if you want to use relay.WebsocketTunnelRelay,
 # you will need it.
 dependencies = [
-    "preserves",
+    "preserves>=0.996.2",
 ]
 
 [project.urls]
