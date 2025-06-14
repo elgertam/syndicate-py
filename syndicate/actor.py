@@ -152,7 +152,7 @@ class Actor:
             self._system.adjust_engine_inhabitant_count(-1)
 
     def _pop_outbound(self, handle, clear_from_source_facet):
-        e = self.outbound.pop(handle)
+        e = self.outbound.pop(handle, None)
         if e and clear_from_source_facet:
             try:
                 e.source_facet.handles.remove(handle)
@@ -397,8 +397,9 @@ class Turn:
             new_outbound = {}
             if initial_handles is not None:
                 for handle in initial_handles:
-                    new_outbound[handle] = \
-                        self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
+                    e = self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
+                    if e is not None:
+                        new_outbound[handle] = e
             self._system.queue_task(lambda: Actor(boot_proc,
                                                   system = self._system,
                                                   name = name,
@@ -450,9 +451,7 @@ class Turn:
 
     def retract(self, handle):
         if handle is not None:
-            e = self._facet.actor._pop_outbound(handle, clear_from_source_facet=True)
-            if e is not None:
-                self._retract(e)
+            self._retract(self._facet.actor._pop_outbound(handle, clear_from_source_facet=True))
 
     def replace(self, ref, handle, assertion):
         if assertion is None or ref is None:
@@ -463,6 +462,7 @@ class Turn:
         return new_handle
 
     def _retract(self, e):
+        if e is None: return
         # Assumes e has already been removed from self._facet.actor.outbound and the
         # appropriate set of handles
         def action():
